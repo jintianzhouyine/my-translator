@@ -64,7 +64,7 @@ class EdgeTTSRust {
             }
         } catch (err) {
             console.error('[Edge TTS] Error:', err);
-            this.onError?.(`Edge TTS: ${err}`);
+            this.onError?.(`Edge TTS 错误：${err}`);
         }
 
         // Process next in queue

@@ -91,7 +91,7 @@ class LocalPipeline:
         # --- ASR Model ---
         if self.asr_model_type == "whisper":
             log("Loading Whisper-large-v3-turbo (MLX)...")
-            emit({"type": "status", "message": "Loading Whisper-large-v3-turbo..."})
+            emit({"type": "status", "message": "正在加载 Whisper-large-v3-turbo…"})
             t = time.time()
             import mlx_whisper
             import numpy as np
@@ -106,7 +106,7 @@ class LocalPipeline:
             log(f"Whisper loaded in {time.time()-t:.1f}s")
         elif self.asr_model_type == "qwen":
             log("Loading Qwen3-ASR-0.6B...")
-            emit({"type": "status", "message": "Loading Qwen3-ASR-0.6B..."})
+            emit({"type": "status", "message": "正在加载 Qwen3-ASR-0.6B…"})
             t = time.time()
             from mlx_audio.stt import load_model
             self.asr_model = load_model("Qwen/Qwen3-ASR-0.6B")
@@ -116,7 +116,7 @@ class LocalPipeline:
 
         # --- LLM Translator ---
         log("Loading Gemma-3-4B translator...")
-        emit({"type": "status", "message": "Loading Gemma-3-4B translator..."})
+        emit({"type": "status", "message": "正在加载 Gemma-3-4B 翻译模型…"})
         t = time.time()
         from mlx_lm import load
         self.llm_model, self.llm_tokenizer = load("mlx-community/gemma-3-4b-it-qat-4bit")
@@ -124,7 +124,7 @@ class LocalPipeline:
 
         # Warm up LLM
         log("Warming up LLM...")
-        emit({"type": "status", "message": "Warming up translator..."})
+        emit({"type": "status", "message": "正在预热翻译模型…"})
         self._translate("テスト")
 
         log("Pipeline ready!")

@@ -79,7 +79,7 @@ def check_system_python():
 
 def create_venv(python_path, env_dir):
     """Create a Python virtual environment."""
-    emit({"type": "progress", "step": "venv", "message": "Creating Python environment..."})
+    emit({"type": "progress", "step": "venv", "message": "正在创建 Python 环境…"})
 
     os.makedirs(env_dir, exist_ok=True)
 
@@ -97,7 +97,7 @@ def create_venv(python_path, env_dir):
         capture_output=True, text=True, timeout=120
     )
 
-    emit({"type": "progress", "step": "venv", "message": "Python environment created ✓", "done": True})
+    emit({"type": "progress", "step": "venv", "message": "Python 环境已创建 ✓", "done": True})
 
 
 def install_packages(env_dir):
@@ -105,10 +105,10 @@ def install_packages(env_dir):
     venv_pip = os.path.join(env_dir, "bin", "pip3")
 
     packages = [
-        ("numpy", "Array processing"),
-        ("mlx", "Apple Silicon ML framework"),
-        ("mlx-lm", "LLM inference"),
-        ("mlx-whisper", "Whisper ASR"),
+        ("numpy", "数组处理"),
+        ("mlx", "Apple Silicon 机器学习框架"),
+        ("mlx-lm", "大语言模型推理"),
+        ("mlx-whisper", "Whisper 语音识别"),
     ]
 
     total = len(packages)
@@ -116,7 +116,7 @@ def install_packages(env_dir):
         emit({
             "type": "progress",
             "step": "packages",
-            "message": f"Installing {pkg} ({i+1}/{total})... {desc}",
+            "message": f"正在安装 {pkg}（{i+1}/{total}）… {desc}",
             "progress": (i / total) * 100,
         })
 
@@ -130,7 +130,7 @@ def install_packages(env_dir):
     emit({
         "type": "progress",
         "step": "packages",
-        "message": "All packages installed ✓",
+        "message": "所有依赖已安装 ✓",
         "progress": 100,
         "done": True,
     })
@@ -141,8 +141,8 @@ def download_models(env_dir):
     venv_python = os.path.join(env_dir, "bin", "python3")
 
     models = [
-        ("mlx-community/whisper-large-v3-turbo", "Whisper ASR (~1.5GB)"),
-        ("mlx-community/gemma-3-4b-it-qat-4bit", "Gemma Translation (~3GB)"),
+        ("mlx-community/whisper-large-v3-turbo", "Whisper 语音识别（约 1.5 GB）"),
+        ("mlx-community/gemma-3-4b-it-qat-4bit", "Gemma 翻译模型（约 3 GB）"),
     ]
 
     total = len(models)
@@ -150,7 +150,7 @@ def download_models(env_dir):
         emit({
             "type": "progress",
             "step": "models",
-            "message": f"Downloading {desc} ({i+1}/{total})...",
+            "message": f"正在下载 {desc}（{i+1}/{total}）…",
             "progress": (i / total) * 100,
         })
 
@@ -175,7 +175,7 @@ except Exception as e:
     emit({
         "type": "progress",
         "step": "models",
-        "message": "All models downloaded ✓",
+        "message": "所有模型已下载 ✓",
         "progress": 100,
         "done": True,
     })
@@ -213,16 +213,16 @@ def main():
             sys.exit(1)
 
     # Full setup
-    emit({"type": "start", "message": "Starting MLX setup...", "env_dir": env_dir})
+    emit({"type": "start", "message": "正在开始配置 MLX…", "env_dir": env_dir})
 
     try:
         # Step 1: Check system Python
         python_path, python_version = check_system_python()
         if not python_path:
-            emit({"type": "error", "message": "Python 3.10+ not found. Please install Python via Homebrew: brew install python"})
+            emit({"type": "error", "message": "未找到 Python 3.10 或更新版本，请通过 Homebrew 安装：brew install python"})
             sys.exit(1)
 
-        emit({"type": "progress", "step": "check", "message": f"Found Python {python_version} at {python_path} ✓"})
+        emit({"type": "progress", "step": "check", "message": f"已找到 Python {python_version}：{python_path} ✓"})
 
         # Step 2: Create venv
         create_venv(python_path, env_dir)
@@ -238,7 +238,7 @@ def main():
 
         emit({
             "type": "complete",
-            "message": "MLX setup complete! Ready to translate.",
+            "message": "MLX 配置完成，可以开始翻译。",
             "python": os.path.join(env_dir, "bin", "python3"),
             "env_dir": env_dir,
         })

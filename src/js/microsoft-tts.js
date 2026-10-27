@@ -64,7 +64,7 @@ class MicrosoftTTS {
             if (this.onAudioChunk) this.onAudioChunk(base64Audio, true);
         } catch (err) {
             console.error('[Microsoft v2 TTS] Error:', err);
-            this.onError?.(`Microsoft v2 TTS: ${err}`);
+            this.onError?.(`Microsoft v2 TTS 错误：${err}`);
         }
         this._processQueue();
     }

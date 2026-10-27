@@ -56,7 +56,7 @@ class GoogleFreeTTS {
             if (this.onAudioChunk) this.onAudioChunk(base64Audio, true);
         } catch (err) {
             console.error('[Google Free TTS] Error:', err);
-            this.onError?.(`Google Free TTS: ${err}`);
+            this.onError?.(`Google 免费朗读 错误：${err}`);
         }
         this._processQueue();
     }

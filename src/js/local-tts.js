@@ -56,7 +56,7 @@ class LocalTTS {
             if (base64Audio && this.onAudioChunk) this.onAudioChunk(base64Audio, true);
         } catch (err) {
             console.error('[Local TTS] Error:', err);
-            this.onError?.(`Local TTS: ${err}`);
+            this.onError?.(`本地朗读 错误：${err}`);
         }
         this._processQueue();
     }

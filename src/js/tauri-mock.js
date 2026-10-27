@@ -72,7 +72,7 @@ if (!window.__TAURI__ && location.port === '3111') {
                         Object.assign(mockSettings, args?.newSettings || {});
                         return null;
                     case 'get_platform_info':
-                        return { os: 'macos', arch: 'aarch64' };
+                        return JSON.stringify({ os: 'macos', arch: 'aarch64', is_arm_hardware: true });
                     case 'microsoft_list_voices':
                         return mockMsVoices;
                     case 'local_tts_list_models':
@@ -112,6 +112,8 @@ if (!window.__TAURI__ && location.port === '3111') {
                     case 'stop_mic_capture':
                         return null;
                     case 'list_transcripts':
+                    case 'list_sessions':
+                    case 'search_sessions':
                         return [];
                     case 'check_update':
                         return null;
@@ -133,12 +135,18 @@ if (!window.__TAURI__ && location.port === '3111') {
                 setAlwaysOnTop: async () => {},
                 outerPosition: async () => ({ x: 100, y: 100 }),
                 innerSize: async () => ({ width: 800, height: 600 }),
+                scaleFactor: async () => 1,
                 setPosition: async () => {},
                 setSize: async () => {},
+                onCloseRequested: async () => () => {},
+                listen: async () => () => {},
                 close: async () => { window.close(); },
                 minimize: async () => {},
                 toggleMaximize: async () => {},
             }),
+            LogicalSize: class {
+                constructor(width, height) { this.width = width; this.height = height; }
+            },
         },
     };
 }

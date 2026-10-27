@@ -105,7 +105,7 @@ class WebSpeechTTS {
             this._isSpeaking = false;
             if (event.error !== 'canceled') {
                 console.error('[WebSpeech] Error:', event.error);
-                this.onError?.(`Speech error: ${event.error}`);
+                this.onError?.(`语音朗读错误：${event.error}`);
             }
         };
 

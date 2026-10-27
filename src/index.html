@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My Translator</title>
+  <title>我的翻译器</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -17,7 +17,7 @@
     <!-- Drag Region (title bar area) -->
     <div id="drag-region" data-tauri-drag-region>
       <div class="control-bar" data-tauri-drag-region>
-        <button id="btn-settings" class="icon-btn" title="Settings">
+        <button id="btn-settings" class="icon-btn" title="设置">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
             <path
@@ -28,16 +28,16 @@
 
         <!-- Activity switcher — the 3 first-class spaces of the app -->
         <div class="activity-switcher">
-          <button class="activity-tab active" data-activity="live" title="Dịch trực tiếp" type="button">
-            🎙 Live<span id="live-tab-badge" class="live-tab-badge"></span>
+          <button class="activity-tab active" data-activity="live" title="实时翻译" type="button">
+            🎙 实时翻译<span id="live-tab-badge" class="live-tab-badge"></span>
           </button>
-          <button class="activity-tab" data-activity="read" title="Đọc văn bản (TTS)" type="button">📖 Đọc</button>
-          <button class="activity-tab" data-activity="library" title="Sessions đã lưu" type="button">📚 Thư viện</button>
+          <button class="activity-tab" data-activity="read" title="文本朗读（TTS）" type="button">📖 文本朗读</button>
+          <button class="activity-tab" data-activity="library" title="已保存的翻译记录" type="button">📚 翻译记录</button>
         </div>
 
         <div class="toolbar-spacer" data-tauri-drag-region></div>
 
-        <button id="btn-window-mode" class="icon-btn" title="Mở rộng cửa sổ">
+        <button id="btn-window-mode" class="icon-btn" title="展开窗口">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15 3 21 3 21 9" />
             <polyline points="9 21 3 21 3 15" />
@@ -46,14 +46,14 @@
           </svg>
         </button>
 
-        <button id="btn-pin" class="icon-btn active" title="Pin on top (always visible)">
+        <button id="btn-pin" class="icon-btn active" title="窗口置顶（始终显示）">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 17v5" />
             <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76z" />
           </svg>
         </button>
 
-        <button id="btn-close" class="icon-btn close-btn" title="Close">
+        <button id="btn-close" class="icon-btn close-btn" title="关闭">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -66,10 +66,10 @@
     <div id="transcript-container" class="activity-panel active" data-activity="live" data-tauri-drag-region>
       <!-- Live status row: engine · state · languages · audio source -->
       <div class="live-status-row">
-        <div class="engine-pill" id="engine-pill" title="Click to switch engine">
+        <div class="engine-pill" id="engine-pill" title="点击切换翻译引擎">
           <button class="engine-pill-btn active" data-engine-class="standard" type="button">
             <span class="engine-pill-icon">☁️</span>
-            <span class="engine-pill-label">Standard</span>
+            <span class="engine-pill-label">标准模式</span>
           </button>
           <button class="engine-pill-btn" data-engine-class="openai" type="button">
             <span class="engine-pill-icon">⚡</span>
@@ -82,13 +82,13 @@
         </div>
         <div class="status-area">
           <span id="status-indicator" class="status-dot disconnected"></span>
-          <span id="status-text" class="status-text">Ready</span>
+          <span id="status-text" class="status-text">就绪</span>
         </div>
-        <span id="live-lang" class="live-lang" title="Cặp ngôn ngữ (đổi trong Cài đặt)"></span>
-        <select id="select-audio-source" class="source-select" title="Nguồn âm thanh (⌘1/2/3)">
-          <option value="system">🔊 System</option>
-          <option value="microphone">🎤 Mic</option>
-          <option value="both">🔊+🎤 Cả hai</option>
+        <span id="live-lang" class="live-lang" title="翻译语言（可在设置中更改）"></span>
+        <select id="select-audio-source" class="source-select" title="音频来源（⌘1/2/3）">
+          <option value="system">🔊 系统声音</option>
+          <option value="microphone">🎤 麦克风</option>
+          <option value="both">🔊+🎤 两者</option>
         </select>
       </div>
 
@@ -101,30 +101,30 @@
             <line x1="12" y1="19" x2="12" y2="23" />
             <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
-          <p>Press ▶ to start translating</p>
+          <p>点击 ▶ 开始翻译</p>
         </div>
       </div>
 
       <!-- Live action row: primary start/stop + pause + TTS + overflow menu -->
       <div class="live-action-row">
-        <button id="btn-start" class="primary-action-btn" title="Start/Stop (⌘↩)">
+        <button id="btn-start" class="primary-action-btn" title="开始／停止（⌘↩）">
           <svg id="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
           <svg id="icon-stop" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none">
             <rect x="4" y="4" width="16" height="16" rx="2" />
           </svg>
-          <span id="btn-start-label">Bắt đầu</span>
+          <span id="btn-start-label">开始</span>
         </button>
 
-        <button id="btn-pause" class="action-btn" title="Pause (keep session)" disabled>
+        <button id="btn-pause" class="action-btn" title="暂停（保留当前会话）" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="4" width="4" height="16" rx="1" />
             <rect x="14" y="4" width="4" height="16" rx="1" />
           </svg>
         </button>
 
-        <button id="btn-tts" class="tts-action-btn" title="TTS Narration (⌘T)">
+        <button id="btn-tts" class="tts-action-btn" title="朗读译文（⌘T）">
           <svg id="icon-tts-off" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             <line x1="9" y1="10" x2="15" y2="10" />
@@ -133,32 +133,32 @@
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             <path d="M9 10h2" /><path d="M13 8v4" /><path d="M15 10h1" />
           </svg>
-          <span class="tts-label">TTS</span>
+          <span class="tts-label">朗读</span>
         </button>
 
         <div class="more-menu-wrap">
-          <button id="btn-more" class="icon-btn" title="Thêm">
+          <button id="btn-more" class="icon-btn" title="更多">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
             </svg>
           </button>
           <div id="more-menu" class="more-menu" style="display:none">
-            <button id="btn-copy" class="more-menu-item" type="button">📋 Copy transcript</button>
-            <button id="btn-clear" class="more-menu-item" type="button">🗑 Xóa transcript</button>
+            <button id="btn-copy" class="more-menu-item" type="button">📋 复制字幕</button>
+            <button id="btn-clear" class="more-menu-item" type="button">🗑 清空字幕</button>
             <div class="more-menu-sep"></div>
-            <div class="more-menu-label">Hiển thị</div>
+            <div class="more-menu-label">显示设置</div>
             <div class="floating-controls">
               <div class="font-controls">
-                <button id="btn-font-down" class="float-btn" title="Decrease font size">A−</button>
+                <button id="btn-font-down" class="float-btn" title="缩小字号">A−</button>
                 <span id="font-size-display" class="font-size-label">16</span>
-                <button id="btn-font-up" class="float-btn" title="Increase font size">A+</button>
+                <button id="btn-font-up" class="float-btn" title="放大字号">A+</button>
               </div>
               <div class="color-controls">
-                <button class="color-dot active" data-color="#ffffff" title="White" style="background:#ffffff;"></button>
-                <button class="color-dot" data-color="#ffd700" title="Yellow" style="background:#ffd700;"></button>
-                <button class="color-dot" data-color="#00e5ff" title="Cyan" style="background:#00e5ff;"></button>
+                <button class="color-dot active" data-color="#ffffff" title="白色" style="background:#ffffff;"></button>
+                <button class="color-dot" data-color="#ffd700" title="黄色" style="background:#ffd700;"></button>
+                <button class="color-dot" data-color="#00e5ff" title="青色" style="background:#00e5ff;"></button>
               </div>
-              <button id="btn-view-mode" class="float-btn" title="Toggle dual view">
+              <button id="btn-view-mode" class="float-btn" title="切换双栏对照">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="3" y="3" width="7" height="18" rx="1" />
                   <rect x="14" y="3" width="7" height="18" rx="1" />
@@ -166,9 +166,9 @@
               </button>
             </div>
             <div class="more-menu-sep"></div>
-            <button id="btn-compact" class="more-menu-item" type="button">⤢ Compact — ẩn thanh công cụ</button>
-            <button id="btn-auto-hide" class="more-menu-item" type="button">✓ Tự ẩn khi đang dịch</button>
-            <button id="btn-shortcuts" class="more-menu-item" type="button">⌨️ Phím tắt</button>
+            <button id="btn-compact" class="more-menu-item" type="button">⤢ 精简模式 — 隐藏工具栏</button>
+            <button id="btn-auto-hide" class="more-menu-item" type="button">✓ 翻译时自动隐藏工具栏</button>
+            <button id="btn-shortcuts" class="more-menu-item" type="button">⌨️ 快捷键</button>
           </div>
         </div>
       </div>
@@ -177,40 +177,40 @@
            Two cards because OpenAI Realtime is structurally different from
            Soniox/Local (text+voice fused, no two-way, no custom TTS). -->
       <div id="engine-picker" class="engine-picker" style="display:none">
-        <p class="engine-picker-title">Choose translation mode</p>
+        <p class="engine-picker-title">选择翻译模式</p>
         <div class="engine-cards">
           <button class="engine-card" data-engine-class="standard" type="button">
             <div class="engine-card-icon">☁️</div>
-            <div class="engine-card-name">Standard</div>
-            <div class="engine-card-meta">Soniox / Local · ~$0.12/hr</div>
+            <div class="engine-card-name">标准模式</div>
+            <div class="engine-card-meta">Soniox／本地 · 约 0.12 美元／小时</div>
             <ul class="engine-card-feats">
-              <li>70+ languages</li>
-              <li>Two-way mode</li>
-              <li>Custom TTS</li>
+              <li>70 多种语言</li>
+              <li>双向翻译</li>
+              <li>可选朗读服务</li>
             </ul>
           </button>
           <button class="engine-card" data-engine-class="openai" type="button">
             <div class="engine-card-icon">⚡</div>
             <div class="engine-card-name">OpenAI Realtime</div>
-            <div class="engine-card-meta">~$4/hr · text-only</div>
+            <div class="engine-card-meta">约 4 美元／小时 · 仅字幕</div>
             <ul class="engine-card-feats">
-              <li>13 languages</li>
-              <li>Continuous delta captions</li>
-              <li>Most idiomatic output</li>
+              <li>13 种语言</li>
+              <li>字幕连续更新</li>
+              <li>译文更自然</li>
             </ul>
           </button>
           <button class="engine-card" data-engine-class="qwen" type="button">
             <div class="engine-card-icon">🌏</div>
             <div class="engine-card-name">Qwen LiveTranslate Flash</div>
-            <div class="engine-card-meta">Free preview · text-only</div>
+            <div class="engine-card-meta">免费预览 · 仅字幕</div>
             <ul class="engine-card-feats">
-              <li>60+ languages</li>
-              <li>Fastest first token (~4s)</li>
-              <li>Alibaba DashScope (Singapore)</li>
+              <li>60 多种语言</li>
+              <li>约 4 秒显示首段译文</li>
+              <li>阿里云百炼（新加坡）</li>
             </ul>
           </button>
         </div>
-        <p class="engine-picker-hint">Switch any time from the engine pill in the toolbar.</p>
+        <p class="engine-picker-hint">可通过工具栏中的引擎按钮切换模式。</p>
       </div>
     </div>
 
@@ -218,17 +218,17 @@
     <div id="read-panel" class="activity-panel" data-activity="read">
       <!-- Quick-pick: change voice without leaving the panel -->
       <div class="read-quick-row">
-        <span class="read-quick-label">Giọng:</span>
+        <span class="read-quick-label">声音：</span>
         <select id="read-voice-quick" class="source-select"></select>
-        <button id="btn-read-tts-settings" class="read-quick-more" type="button" title="Mở cài đặt TTS đầy đủ">Chỉnh thêm…</button>
+        <button id="btn-read-tts-settings" class="read-quick-more" type="button" title="打开完整朗读设置">更多设置…</button>
       </div>
-      <textarea id="read-input" placeholder="Dán hoặc gõ văn bản tiếng Việt để đọc to…"></textarea>
+      <textarea id="read-input" placeholder="粘贴或输入要朗读的文本，请选择与文本语言匹配的声音…"></textarea>
       <div id="read-output" class="read-output" style="display:none"></div>
       <div class="read-progress-bar"><div id="read-progress-fill"></div></div>
       <div class="read-controls">
-        <button id="btn-read-play" class="read-btn read-btn-primary" type="button">▶ Đọc</button>
-        <button id="btn-read-pause" class="read-btn" type="button" style="display:none">⏸ Tạm dừng</button>
-        <button id="btn-read-stop" class="read-btn" type="button" style="display:none">⏹ Dừng</button>
+        <button id="btn-read-play" class="read-btn read-btn-primary" type="button">▶ 朗读</button>
+        <button id="btn-read-pause" class="read-btn" type="button" style="display:none">⏸ 暂停</button>
+        <button id="btn-read-stop" class="read-btn" type="button" style="display:none">⏹ 停止</button>
         <span id="read-progress" class="read-progress"></span>
       </div>
       <div id="read-hint" class="read-hint"></div>
@@ -239,8 +239,8 @@
       <!-- Session list -->
       <div id="sessions-list-panel" class="sessions-body">
         <div class="sessions-search-row">
-          <input id="input-session-search" type="text" placeholder="Search sessions..." class="sessions-search-input" />
-          <button id="btn-open-transcripts" class="icon-btn small" title="Open saved transcripts folder in Finder">
+          <input id="input-session-search" type="text" placeholder="搜索翻译记录…" class="sessions-search-input" />
+          <button id="btn-open-transcripts" class="icon-btn small" title="打开翻译记录文件夹">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
@@ -252,27 +252,27 @@
       <!-- Session viewer (shown when a session is selected) -->
       <div id="session-viewer" class="sessions-body" style="display:none">
         <div class="session-viewer-header">
-          <button id="btn-session-back-to-list" class="icon-btn" title="Back to list">
+          <button id="btn-session-back-to-list" class="icon-btn" title="返回列表">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </button>
           <span id="session-viewer-title" class="session-viewer-title-text"></span>
-          <button id="btn-session-edit-title" class="icon-btn small" title="Rename session">
+          <button id="btn-session-edit-title" class="icon-btn small" title="重命名记录">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
           </button>
-          <button id="btn-session-export-srt" class="btn-secondary small" title="Export as .srt">.srt</button>
-          <button id="btn-session-export-txt" class="btn-secondary small" title="Export as .txt">.txt</button>
-          <button id="btn-session-copy" class="session-copy-btn" title="Copy content">
+          <button id="btn-session-export-srt" class="btn-secondary small" title="导出为 SRT 字幕">.srt</button>
+          <button id="btn-session-export-txt" class="btn-secondary small" title="导出为 TXT 文本">.txt</button>
+          <button id="btn-session-copy" class="session-copy-btn" title="复制内容">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            Copy
+            复制
           </button>
         </div>
         <div id="session-viewer-content" class="session-content-scroll"></div>
@@ -287,14 +287,14 @@
   <div id="settings-view" class="view">
     <div id="settings-drag" data-tauri-drag-region>
       <div class="settings-header">
-        <button id="btn-back" class="icon-btn" title="Back">
+        <button id="btn-back" class="icon-btn" title="返回">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
           </svg>
         </button>
-        <h2>Settings</h2>
-        <button id="btn-save-settings-top" class="icon-btn save-btn-top" title="Save & Close">
+        <h2>设置</h2>
+        <button id="btn-save-settings-top" class="icon-btn save-btn-top" title="保存并关闭">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12" />
           </svg>
@@ -308,7 +308,7 @@
         <button class="settings-card" data-screen="tab-translation" id="card-translation">
           <span class="settings-card-icon">🌐</span>
           <span class="settings-card-text">
-            <span class="settings-card-title">Engine dịch</span>
+            <span class="settings-card-title">翻译引擎</span>
             <span class="settings-card-sub" id="card-translation-sub">—</span>
           </span>
           <span class="settings-card-chevron">›</span>
@@ -316,7 +316,7 @@
         <button class="settings-card" data-screen="tab-tts" id="card-tts">
           <span class="settings-card-icon">🔊</span>
           <span class="settings-card-text">
-            <span class="settings-card-title">Giọng đọc (TTS)</span>
+            <span class="settings-card-title">语音朗读（TTS）</span>
             <span class="settings-card-sub" id="card-tts-sub">—</span>
           </span>
           <span class="settings-card-chevron">›</span>
@@ -324,16 +324,16 @@
         <button class="settings-card" data-screen="tab-display" id="card-display">
           <span class="settings-card-icon">🎨</span>
           <span class="settings-card-text">
-            <span class="settings-card-title">Hiển thị</span>
-            <span class="settings-card-sub" id="card-display-sub">Font, kích thước chữ</span>
+            <span class="settings-card-title">显示设置</span>
+            <span class="settings-card-sub" id="card-display-sub">字体、字号和透明度</span>
           </span>
           <span class="settings-card-chevron">›</span>
         </button>
         <button class="settings-card" data-screen="tab-about" id="card-about">
           <span class="settings-card-icon">ℹ️</span>
           <span class="settings-card-text">
-            <span class="settings-card-title">Giới thiệu</span>
-            <span class="settings-card-sub" id="card-about-sub">Phiên bản, cập nhật</span>
+            <span class="settings-card-title">关于</span>
+            <span class="settings-card-sub" id="card-about-sub">版本与更新</span>
           </span>
           <span class="settings-card-chevron">›</span>
         </button>
@@ -341,222 +341,222 @@
 
       <!-- Detail: Translation -->
       <div class="settings-tab-content" id="tab-translation">
-        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
+        <button class="settings-back-row" data-screen="settings-home">‹ 返回设置</button>
         <div class="settings-section">
-          <span class="field-label">Engine</span>
+          <span class="field-label">翻译引擎</span>
           <select id="select-translation-mode">
             <option value="soniox">☁️ Soniox</option>
-            <option value="local">🖥️ Local MLX</option>
+            <option value="local">🖥️ 本地 MLX</option>
             <option value="openai">⚡ OpenAI Realtime</option>
             <option value="qwen">🌏 Qwen LiveTranslate Flash</option>
           </select>
-          <p class="hint" id="hint-mode-soniox">Cloud · 70+ languages · ~$0.12/hr</p>
-          <p class="hint" id="hint-mode-local" style="display:none">Offline · free · ~3–4s delay</p>
-          <p class="hint" id="hint-mode-openai" style="display:none">Cloud · 13 languages · text-only captions</p>
-          <p class="hint" id="hint-mode-qwen" style="display:none">Cloud · 60+ languages · text-only · free preview · pick a source language</p>
+          <p class="hint" id="hint-mode-soniox">云端 · 70 多种语言 · 约 0.12 美元／小时</p>
+          <p class="hint" id="hint-mode-local" style="display:none">离线 · 免费 · 约 3–4 秒延迟</p>
+          <p class="hint" id="hint-mode-openai" style="display:none">云端 · 13 种语言 · 仅字幕</p>
+          <p class="hint" id="hint-mode-qwen" style="display:none">云端 · 60 多种语言 · 仅字幕 · 免费预览 · 需指定源语言</p>
           <div id="openai-cost-warning" class="cost-warning" style="display:none">
-            ⚠️ ~$4/hr — much pricier than Soniox. Charged to your OpenAI account.
+            ⚠️ 约 4 美元／小时，费用高于 Soniox，由你的 OpenAI 账户支付。
           </div>
         </div>
 
         <div class="settings-section" id="section-api-key">
           <span class="field-label">
-            Soniox API Key
+            Soniox API 密钥
             <span id="key-status-soniox" class="key-status"></span>
           </span>
           <div class="input-group">
-            <input type="password" id="input-api-key" placeholder="Enter your Soniox API key..." autocomplete="off" />
-            <button id="btn-toggle-key" class="icon-btn small" title="Show/Hide">
+            <input type="password" id="input-api-key" placeholder="输入你的 Soniox API 密钥…" autocomplete="off" />
+            <button id="btn-toggle-key" class="icon-btn small" title="显示／隐藏">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
               </svg>
             </button>
-            <button id="btn-test-soniox" class="btn-secondary small" title="Test connection">Test</button>
+            <button id="btn-test-soniox" class="btn-secondary small" title="测试连接">测试</button>
           </div>
-          <p class="hint">Get key at <a href="#" id="link-soniox">console.soniox.com</a></p>
+          <p class="hint">获取密钥： <a href="#" id="link-soniox">console.soniox.com</a></p>
         </div>
 
         <div class="settings-section" id="section-openai-key">
           <span class="field-label">
-            OpenAI API Key
+            OpenAI API 密钥
             <span id="key-status-openai" class="key-status"></span>
           </span>
           <div class="input-group">
             <input type="password" id="input-openai-key" placeholder="sk-..." autocomplete="off" />
-            <button id="btn-toggle-openai-key" class="icon-btn small" title="Show/Hide">
+            <button id="btn-toggle-openai-key" class="icon-btn small" title="显示／隐藏">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
               </svg>
             </button>
-            <button id="btn-test-openai" class="btn-secondary small" title="Test connection">Test</button>
+            <button id="btn-test-openai" class="btn-secondary small" title="测试连接">测试</button>
           </div>
-          <p class="hint">Get key at <a href="#" id="link-openai">platform.openai.com</a></p>
+          <p class="hint">获取密钥： <a href="#" id="link-openai">platform.openai.com</a></p>
         </div>
 
         <div class="settings-section" id="section-qwen-key" style="display:none">
           <span class="field-label">
-            Qwen (DashScope) API Key
+            Qwen（百炼）API 密钥
             <span id="key-status-qwen" class="key-status"></span>
           </span>
           <div class="input-group">
             <input type="password" id="input-qwen-key" placeholder="sk-..." autocomplete="off" />
-            <button id="btn-toggle-qwen-key" class="icon-btn small" title="Show/Hide">
+            <button id="btn-toggle-qwen-key" class="icon-btn small" title="显示／隐藏">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
               </svg>
             </button>
           </div>
-          <p class="hint">Get DashScope key at <a href="#" id="link-qwen">bailian.console.alibabacloud.com</a> · free preview</p>
+          <p class="hint">获取百炼密钥： <a href="#" id="link-qwen">bailian.console.alibabacloud.com</a> · 免费预览</p>
         </div>
 
         <div class="settings-section" id="section-languages">
           <!-- Translation Type -->
           <div style="margin-bottom: 10px;">
-            <span class="field-label">Translation Type</span>
+            <span class="field-label">翻译方式</span>
             <select id="select-translation-type">
-              <option value="one_way">One-way → translate all to target</option>
-              <option value="two_way">Two-way ↔ translate between two languages</option>
+              <option value="one_way">单向 → 翻译成目标语言</option>
+              <option value="two_way">双向 ↔ 两种语言互译</option>
             </select>
           </div>
 
           <!-- One-way: Source + Target -->
           <div id="section-oneway-langs" class="field-row">
             <div class="field">
-              <span class="field-label">Source</span>
+              <span class="field-label">源语言</span>
               <select id="select-source-lang">
-                <option value="auto">Auto-detect</option>
-                <optgroup label="Popular">
-                  <option value="en">English</option>
-                  <option value="ja">Japanese</option>
-                  <option value="ko">Korean</option>
-                  <option value="zh">Chinese</option>
-                  <option value="vi">Vietnamese</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="es">Spanish</option>
-                  <option value="th">Thai</option>
-                  <option value="id">Indonesian</option>
+                <option value="auto">自动检测</option>
+                <optgroup label="常用语言">
+                  <option value="en">英语</option>
+                  <option value="ja">日语</option>
+                  <option value="ko">韩语</option>
+                  <option value="zh">中文</option>
+                  <option value="vi">越南语</option>
+                  <option value="fr">法语</option>
+                  <option value="de">德语</option>
+                  <option value="es">西班牙语</option>
+                  <option value="th">泰语</option>
+                  <option value="id">印度尼西亚语</option>
                 </optgroup>
-                <optgroup label="All Languages">
-                  <option value="af">Afrikaans</option>
-                  <option value="sq">Albanian</option>
-                  <option value="ar">Arabic</option>
-                  <option value="az">Azerbaijani</option>
-                  <option value="eu">Basque</option>
-                  <option value="be">Belarusian</option>
-                  <option value="bn">Bengali</option>
-                  <option value="bs">Bosnian</option>
-                  <option value="bg">Bulgarian</option>
-                  <option value="ca">Catalan</option>
-                  <option value="hr">Croatian</option>
-                  <option value="cs">Czech</option>
-                  <option value="da">Danish</option>
-                  <option value="nl">Dutch</option>
-                  <option value="et">Estonian</option>
-                  <option value="fi">Finnish</option>
-                  <option value="gl">Galician</option>
-                  <option value="el">Greek</option>
-                  <option value="gu">Gujarati</option>
-                  <option value="he">Hebrew</option>
-                  <option value="hi">Hindi</option>
-                  <option value="hu">Hungarian</option>
-                  <option value="it">Italian</option>
-                  <option value="kn">Kannada</option>
-                  <option value="kk">Kazakh</option>
-                  <option value="lv">Latvian</option>
-                  <option value="lt">Lithuanian</option>
-                  <option value="mk">Macedonian</option>
-                  <option value="ms">Malay</option>
-                  <option value="ml">Malayalam</option>
-                  <option value="mr">Marathi</option>
-                  <option value="no">Norwegian</option>
-                  <option value="fa">Persian</option>
-                  <option value="pl">Polish</option>
-                  <option value="pt">Portuguese</option>
-                  <option value="pa">Punjabi</option>
-                  <option value="ro">Romanian</option>
-                  <option value="ru">Russian</option>
-                  <option value="sr">Serbian</option>
-                  <option value="sk">Slovak</option>
-                  <option value="sl">Slovenian</option>
-                  <option value="sw">Swahili</option>
-                  <option value="sv">Swedish</option>
-                  <option value="tl">Tagalog</option>
-                  <option value="ta">Tamil</option>
-                  <option value="te">Telugu</option>
-                  <option value="tr">Turkish</option>
-                  <option value="uk">Ukrainian</option>
-                  <option value="ur">Urdu</option>
-                  <option value="cy">Welsh</option>
+                <optgroup label="全部语言">
+                  <option value="af">南非荷兰语</option>
+                  <option value="sq">阿尔巴尼亚语</option>
+                  <option value="ar">阿拉伯语</option>
+                  <option value="az">阿塞拜疆语</option>
+                  <option value="eu">巴斯克语</option>
+                  <option value="be">白俄罗斯语</option>
+                  <option value="bn">孟加拉语</option>
+                  <option value="bs">波斯尼亚语</option>
+                  <option value="bg">保加利亚语</option>
+                  <option value="ca">加泰罗尼亚语</option>
+                  <option value="hr">克罗地亚语</option>
+                  <option value="cs">捷克语</option>
+                  <option value="da">丹麦语</option>
+                  <option value="nl">荷兰语</option>
+                  <option value="et">爱沙尼亚语</option>
+                  <option value="fi">芬兰语</option>
+                  <option value="gl">加利西亚语</option>
+                  <option value="el">希腊语</option>
+                  <option value="gu">古吉拉特语</option>
+                  <option value="he">希伯来语</option>
+                  <option value="hi">印地语</option>
+                  <option value="hu">匈牙利语</option>
+                  <option value="it">意大利语</option>
+                  <option value="kn">卡纳达语</option>
+                  <option value="kk">哈萨克语</option>
+                  <option value="lv">拉脱维亚语</option>
+                  <option value="lt">立陶宛语</option>
+                  <option value="mk">马其顿语</option>
+                  <option value="ms">马来语</option>
+                  <option value="ml">马拉雅拉姆语</option>
+                  <option value="mr">马拉地语</option>
+                  <option value="no">挪威语</option>
+                  <option value="fa">波斯语</option>
+                  <option value="pl">波兰语</option>
+                  <option value="pt">葡萄牙语</option>
+                  <option value="pa">旁遮普语</option>
+                  <option value="ro">罗马尼亚语</option>
+                  <option value="ru">俄语</option>
+                  <option value="sr">塞尔维亚语</option>
+                  <option value="sk">斯洛伐克语</option>
+                  <option value="sl">斯洛文尼亚语</option>
+                  <option value="sw">斯瓦希里语</option>
+                  <option value="sv">瑞典语</option>
+                  <option value="tl">他加禄语</option>
+                  <option value="ta">泰米尔语</option>
+                  <option value="te">泰卢固语</option>
+                  <option value="tr">土耳其语</option>
+                  <option value="uk">乌克兰语</option>
+                  <option value="ur">乌尔都语</option>
+                  <option value="cy">威尔士语</option>
                 </optgroup>
               </select>
             </div>
             <div class="field">
-              <span class="field-label">Target</span>
+              <span class="field-label">目标语言</span>
               <select id="select-target-lang">
-                <optgroup label="Popular">
-                  <option value="vi">Vietnamese</option>
-                  <option value="en">English</option>
-                  <option value="ja">Japanese</option>
-                  <option value="ko">Korean</option>
-                  <option value="zh">Chinese</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="es">Spanish</option>
-                  <option value="th">Thai</option>
-                  <option value="id">Indonesian</option>
+                <optgroup label="常用语言">
+                  <option value="vi">越南语</option>
+                  <option value="en">英语</option>
+                  <option value="ja">日语</option>
+                  <option value="ko">韩语</option>
+                  <option value="zh">中文</option>
+                  <option value="fr">法语</option>
+                  <option value="de">德语</option>
+                  <option value="es">西班牙语</option>
+                  <option value="th">泰语</option>
+                  <option value="id">印度尼西亚语</option>
                 </optgroup>
-                <optgroup label="All Languages">
-                  <option value="af">Afrikaans</option>
-                  <option value="sq">Albanian</option>
-                  <option value="ar">Arabic</option>
-                  <option value="az">Azerbaijani</option>
-                  <option value="eu">Basque</option>
-                  <option value="be">Belarusian</option>
-                  <option value="bn">Bengali</option>
-                  <option value="bs">Bosnian</option>
-                  <option value="bg">Bulgarian</option>
-                  <option value="ca">Catalan</option>
-                  <option value="hr">Croatian</option>
-                  <option value="cs">Czech</option>
-                  <option value="da">Danish</option>
-                  <option value="nl">Dutch</option>
-                  <option value="et">Estonian</option>
-                  <option value="fi">Finnish</option>
-                  <option value="gl">Galician</option>
-                  <option value="el">Greek</option>
-                  <option value="gu">Gujarati</option>
-                  <option value="he">Hebrew</option>
-                  <option value="hi">Hindi</option>
-                  <option value="hu">Hungarian</option>
-                  <option value="it">Italian</option>
-                  <option value="kn">Kannada</option>
-                  <option value="kk">Kazakh</option>
-                  <option value="lv">Latvian</option>
-                  <option value="lt">Lithuanian</option>
-                  <option value="mk">Macedonian</option>
-                  <option value="ms">Malay</option>
-                  <option value="ml">Malayalam</option>
-                  <option value="mr">Marathi</option>
-                  <option value="no">Norwegian</option>
-                  <option value="fa">Persian</option>
-                  <option value="pl">Polish</option>
-                  <option value="pt">Portuguese</option>
-                  <option value="pa">Punjabi</option>
-                  <option value="ro">Romanian</option>
-                  <option value="ru">Russian</option>
-                  <option value="sr">Serbian</option>
-                  <option value="sk">Slovak</option>
-                  <option value="sl">Slovenian</option>
-                  <option value="sw">Swahili</option>
-                  <option value="sv">Swedish</option>
-                  <option value="tl">Tagalog</option>
-                  <option value="ta">Tamil</option>
-                  <option value="te">Telugu</option>
-                  <option value="tr">Turkish</option>
-                  <option value="uk">Ukrainian</option>
-                  <option value="ur">Urdu</option>
-                  <option value="cy">Welsh</option>
+                <optgroup label="全部语言">
+                  <option value="af">南非荷兰语</option>
+                  <option value="sq">阿尔巴尼亚语</option>
+                  <option value="ar">阿拉伯语</option>
+                  <option value="az">阿塞拜疆语</option>
+                  <option value="eu">巴斯克语</option>
+                  <option value="be">白俄罗斯语</option>
+                  <option value="bn">孟加拉语</option>
+                  <option value="bs">波斯尼亚语</option>
+                  <option value="bg">保加利亚语</option>
+                  <option value="ca">加泰罗尼亚语</option>
+                  <option value="hr">克罗地亚语</option>
+                  <option value="cs">捷克语</option>
+                  <option value="da">丹麦语</option>
+                  <option value="nl">荷兰语</option>
+                  <option value="et">爱沙尼亚语</option>
+                  <option value="fi">芬兰语</option>
+                  <option value="gl">加利西亚语</option>
+                  <option value="el">希腊语</option>
+                  <option value="gu">古吉拉特语</option>
+                  <option value="he">希伯来语</option>
+                  <option value="hi">印地语</option>
+                  <option value="hu">匈牙利语</option>
+                  <option value="it">意大利语</option>
+                  <option value="kn">卡纳达语</option>
+                  <option value="kk">哈萨克语</option>
+                  <option value="lv">拉脱维亚语</option>
+                  <option value="lt">立陶宛语</option>
+                  <option value="mk">马其顿语</option>
+                  <option value="ms">马来语</option>
+                  <option value="ml">马拉雅拉姆语</option>
+                  <option value="mr">马拉地语</option>
+                  <option value="no">挪威语</option>
+                  <option value="fa">波斯语</option>
+                  <option value="pl">波兰语</option>
+                  <option value="pt">葡萄牙语</option>
+                  <option value="pa">旁遮普语</option>
+                  <option value="ro">罗马尼亚语</option>
+                  <option value="ru">俄语</option>
+                  <option value="sr">塞尔维亚语</option>
+                  <option value="sk">斯洛伐克语</option>
+                  <option value="sl">斯洛文尼亚语</option>
+                  <option value="sw">斯瓦希里语</option>
+                  <option value="sv">瑞典语</option>
+                  <option value="tl">他加禄语</option>
+                  <option value="ta">泰米尔语</option>
+                  <option value="te">泰卢固语</option>
+                  <option value="tr">土耳其语</option>
+                  <option value="uk">乌克兰语</option>
+                  <option value="ur">乌尔都语</option>
+                  <option value="cy">威尔士语</option>
                 </optgroup>
               </select>
             </div>
@@ -565,95 +565,95 @@
           <!-- Two-way: Language A + Language B -->
           <div id="section-twoway-langs" class="field-row" style="display:none;">
             <div class="field">
-              <span class="field-label">Language A</span>
+              <span class="field-label">语言 A</span>
               <select id="select-lang-a">
-                <optgroup label="Popular">
-                  <option value="ja">Japanese</option>
-                  <option value="en">English</option>
-                  <option value="ko">Korean</option>
-                  <option value="zh">Chinese</option>
-                  <option value="vi">Vietnamese</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="es">Spanish</option>
-                  <option value="th">Thai</option>
-                  <option value="id">Indonesian</option>
+                <optgroup label="常用语言">
+                  <option value="ja">日语</option>
+                  <option value="en">英语</option>
+                  <option value="ko">韩语</option>
+                  <option value="zh">中文</option>
+                  <option value="vi">越南语</option>
+                  <option value="fr">法语</option>
+                  <option value="de">德语</option>
+                  <option value="es">西班牙语</option>
+                  <option value="th">泰语</option>
+                  <option value="id">印度尼西亚语</option>
                 </optgroup>
               </select>
             </div>
             <div class="field">
-              <span class="field-label">Language B</span>
+              <span class="field-label">语言 B</span>
               <select id="select-lang-b">
-                <optgroup label="Popular">
-                  <option value="vi">Vietnamese</option>
-                  <option value="en">English</option>
-                  <option value="ja">Japanese</option>
-                  <option value="ko">Korean</option>
-                  <option value="zh">Chinese</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="es">Spanish</option>
-                  <option value="th">Thai</option>
-                  <option value="id">Indonesian</option>
+                <optgroup label="常用语言">
+                  <option value="vi">越南语</option>
+                  <option value="en">英语</option>
+                  <option value="ja">日语</option>
+                  <option value="ko">韩语</option>
+                  <option value="zh">中文</option>
+                  <option value="fr">法语</option>
+                  <option value="de">德语</option>
+                  <option value="es">西班牙语</option>
+                  <option value="th">泰语</option>
+                  <option value="id">印度尼西亚语</option>
                 </optgroup>
               </select>
             </div>
           </div>
-          <p class="hint" id="hint-twoway" style="display:none;">Speech in Language A → translated to B, and vice versa. Other languages are transcribed but not translated.</p>
+          <p class="hint" id="hint-twoway" style="display:none;">语言 A 翻译为语言 B，语言 B 翻译为语言 A；其他语言仅转写，不翻译。</p>
 
           <!-- Strict Language Detection -->
           <label class="checkbox-option" id="section-strict-lang" style="margin-top: 8px;">
             <input type="checkbox" id="check-strict-lang" />
-            <span class="checkbox-label">Strict language detection <span class="hint-dim">(reduce false language matches)</span></span>
+            <span class="checkbox-label">严格语言检测 <span class="hint-dim">（减少语言误判）</span></span>
           </label>
 
           <!-- Endpoint Delay -->
           <div class="slider-field" id="section-endpoint-delay" style="margin-top: 12px;">
-            <span class="field-label" title="Time to wait after speech stops before translating">Endpoint Delay</span>
+            <span class="field-label" title="说话结束后等待多久再确定译文">断句等待时间</span>
             <input type="range" id="range-endpoint-delay" min="500" max="3000" step="100" value="3000" />
             <span id="endpoint-delay-value" class="range-value">3.0s</span>
           </div>
         </div>
 
         <div class="settings-section">
-          <span class="field-label">Audio Source</span>
+          <span class="field-label">音频来源</span>
           <div class="radio-group" id="audio-source-group">
-            <label class="radio-option"><input type="radio" name="audio-source" value="system" checked /><span class="radio-label">System</span></label>
-            <label class="radio-option"><input type="radio" name="audio-source" value="microphone" /><span class="radio-label">Mic</span></label>
-            <label class="radio-option"><input type="radio" name="audio-source" value="both" /><span class="radio-label">Both</span></label>
+            <label class="radio-option"><input type="radio" name="audio-source" value="system" checked /><span class="radio-label">系统声音</span></label>
+            <label class="radio-option"><input type="radio" name="audio-source" value="microphone" /><span class="radio-label">麦克风</span></label>
+            <label class="radio-option"><input type="radio" name="audio-source" value="both" /><span class="radio-label">系统声音与麦克风</span></label>
           </div>
         </div>
 
         <div class="settings-section" id="section-soniox-context">
-          <span class="field-label">Context <span class="optional-badge">Optional</span></span>
-          <p class="hint" style="margin-bottom: 8px;">Provide context to improve transcription and translation accuracy.</p>
+          <span class="field-label">上下文 <span class="optional-badge">可选</span></span>
+          <p class="hint" style="margin-bottom: 8px;">提供背景信息，帮助提高识别和翻译的准确性。</p>
 
           <!-- General context (key-value pairs) -->
           <div class="context-subsection">
             <div class="terms-header">
-              <span class="hint" style="margin:0;">General context</span>
-              <button type="button" id="btn-add-general" class="btn-icon-sm" title="Add context pair">+</button>
+              <span class="hint" style="margin:0;">通用背景</span>
+              <button type="button" id="btn-add-general" class="btn-icon-sm" title="添加背景信息">+</button>
             </div>
             <div id="context-general-list"></div>
           </div>
 
           <!-- Transcription terms -->
           <div class="context-subsection">
-            <span class="hint">Transcription terms <span class="hint-dim">(one per line — domain-specific words)</span></span>
-            <textarea id="input-context-terms" rows="2" placeholder="e.g.&#10;angioplasty&#10;echocardiogram"></textarea>
+            <span class="hint">识别术语 <span class="hint-dim">（每行一个专业词汇）</span></span>
+            <textarea id="input-context-terms" rows="2" placeholder="例如：&#10;血管成形术&#10;超声心动图"></textarea>
           </div>
 
           <!-- Background text -->
           <div class="context-subsection">
-            <span class="hint">Background text <span class="hint-dim">(meeting notes, prior context)</span></span>
-            <textarea id="input-context-text" rows="2" placeholder="e.g. This is a follow-up meeting about Q3 results..."></textarea>
+            <span class="hint">背景说明 <span class="hint-dim">（会议说明、此前的讨论等）</span></span>
+            <textarea id="input-context-text" rows="2" placeholder="例如：这是一次关于第三季度业绩的跟进会议…"></textarea>
           </div>
 
           <!-- Translation terms -->
           <div class="context-subsection">
             <div class="terms-header">
-              <span class="hint" style="margin:0;">Translation terms <span class="hint-dim">(source → target)</span></span>
-              <button type="button" id="btn-add-term" class="btn-icon-sm" title="Add term">+</button>
+              <span class="hint" style="margin:0;">翻译术语 <span class="hint-dim">（原文 → 译文）</span></span>
+              <button type="button" id="btn-add-term" class="btn-icon-sm" title="添加术语">+</button>
             </div>
             <div id="translation-terms-list"></div>
           </div>
@@ -662,67 +662,67 @@
 
       <!-- Tab: Display -->
       <div class="settings-tab-content" id="tab-display">
-        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
+        <button class="settings-back-row" data-screen="settings-home">‹ 返回设置</button>
         <div class="settings-section">
           <div class="slider-field">
-            <span class="field-label">Opacity</span>
+            <span class="field-label">不透明度</span>
             <input type="range" id="range-opacity" min="20" max="100" value="85" />
             <span id="opacity-value" class="range-value">85%</span>
           </div>
           <div class="slider-field">
-            <span class="field-label">Font Size</span>
+            <span class="field-label">字号</span>
             <input type="range" id="range-font-size" min="12" max="140" value="16" />
             <span id="font-size-value" class="range-value">16px</span>
           </div>
           <div class="slider-field">
-            <span class="field-label">Max Lines</span>
+            <span class="field-label">最大显示行数</span>
             <input type="range" id="range-max-lines" min="2" max="15" value="5" />
             <span id="max-lines-value" class="range-value">5</span>
           </div>
           <label class="checkbox-option" style="margin-top: 8px;">
             <input type="checkbox" id="check-show-original" checked />
-            <span class="checkbox-label">Show original text</span>
+            <span class="checkbox-label">显示原文</span>
           </label>
         </div>
       </div>
 
       <!-- Tab: TTS -->
       <div class="settings-tab-content" id="tab-tts">
-        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
+        <button class="settings-back-row" data-screen="settings-home">‹ 返回设置</button>
         <div class="settings-section">
-          <span class="field-label">Provider</span>
+          <span class="field-label">朗读服务</span>
           <select id="select-tts-provider">
-            <optgroup label="Free">
-              <option value="edge">🎙️ Edge TTS — Free</option>
-              <option value="microsoft">🪟 Microsoft v2 — Free</option>
-              <option value="google-free">🌐 Google TTS — Free</option>
-              <option value="tiktok">🎵 TikTok TTS — Free</option>
-              <option value="local">🔊 Local (Offline) — Free</option>
+            <optgroup label="免费">
+              <option value="edge">🎙️ Edge TTS — 免费</option>
+              <option value="microsoft">🪟 Microsoft v2 — 免费</option>
+              <option value="google-free">🌐 Google TTS — 免费</option>
+              <option value="tiktok">🎵 TikTok TTS — 免费</option>
+              <option value="local">🔊 本地离线朗读 — 免费</option>
             </optgroup>
-            <optgroup label="Premium">
-              <option value="google">🌐 Google Chirp 3 HD — Premium</option>
-              <option value="elevenlabs">✨ ElevenLabs — Premium</option>
+            <optgroup label="付费">
+              <option value="google">🌐 Google Chirp 3 HD — 付费</option>
+              <option value="elevenlabs">✨ ElevenLabs — 付费</option>
             </optgroup>
           </select>
-          <p class="hint" id="tts-provider-hint">Free, natural voices — no API key needed</p>
+          <p class="hint" id="tts-provider-hint">免费自然语音，无需 API 密钥</p>
         </div>
 
         <!-- Edge TTS settings -->
         <div class="settings-section" id="tts-edge-settings">
           <div class="field">
-            <span class="field-label">Voice</span>
+            <span class="field-label">声音</span>
             <select id="select-edge-voice">
-              <option value="vi-VN-HoaiMyNeural">HoaiMy — Nữ 🇻🇳</option>
-              <option value="vi-VN-NamMinhNeural">NamMinh — Nam 🇻🇳</option>
-              <option value="en-US-JennyNeural">Jenny — Female 🇺🇸</option>
-              <option value="en-US-GuyNeural">Guy — Male 🇺🇸</option>
-              <option value="ja-JP-NanamiNeural">Nanami — 女性 🇯🇵</option>
-              <option value="ko-KR-SunHiNeural">SunHi — 여성 🇰🇷</option>
+              <option value="vi-VN-HoaiMyNeural">HoaiMy — 女声 🇻🇳</option>
+              <option value="vi-VN-NamMinhNeural">NamMinh — 男声 🇻🇳</option>
+              <option value="en-US-JennyNeural">Jenny — 女声 🇺🇸</option>
+              <option value="en-US-GuyNeural">Guy — 男声 🇺🇸</option>
+              <option value="ja-JP-NanamiNeural">Nanami — 女声 🇯🇵</option>
+              <option value="ko-KR-SunHiNeural">SunHi — 女声 🇰🇷</option>
               <option value="zh-CN-XiaoxiaoNeural">Xiaoxiao — 女声 🇨🇳</option>
             </select>
           </div>
           <div class="slider-field" style="margin-top: 8px;">
-            <span class="field-label">Speed</span>
+            <span class="field-label">语速</span>
             <input type="range" id="range-edge-speed" min="-50" max="100" step="10" />
             <span id="edge-speed-value" class="range-value"></span>
           </div>
@@ -731,21 +731,21 @@
         <!-- Microsoft v2 settings (voice list populated dynamically, filtered by language) -->
         <div class="settings-section" id="tts-microsoft-settings" style="display:none;">
           <div class="field">
-            <span class="field-label">Language</span>
+            <span class="field-label">语言</span>
             <select id="select-microsoft-lang">
-              <option value="vi">Vietnamese — Tiếng Việt</option>
-              <option value="en">English</option>
+              <option value="vi">越南语</option>
+              <option value="en">英语</option>
             </select>
           </div>
           <div class="field" style="margin-top: 8px;">
-            <span class="field-label">Voice</span>
+            <span class="field-label">声音</span>
             <select id="select-microsoft-voice">
-              <option value="vi-VN-HoaiMyNeural">HoaiMy (Female)</option>
-              <option value="vi-VN-NamMinhNeural">NamMinh (Male)</option>
+              <option value="vi-VN-HoaiMyNeural">HoaiMy （女声）</option>
+              <option value="vi-VN-NamMinhNeural">NamMinh （男声）</option>
             </select>
           </div>
           <div class="slider-field" style="margin-top: 8px;">
-            <span class="field-label">Speed</span>
+            <span class="field-label">语速</span>
             <input type="range" id="range-microsoft-speed" min="-50" max="100" step="10" />
             <span id="microsoft-speed-value" class="range-value"></span>
           </div>
@@ -753,137 +753,137 @@
 
         <!-- Google Free (android-tts) settings -->
         <div class="settings-section" id="tts-google-free-settings" style="display:none;">
-          <span class="field-label">Google API Key (optional)</span>
+          <span class="field-label">Google API 密钥（可选）</span>
           <div class="input-group">
-            <input type="password" id="input-google-free-key" placeholder="AIzaSy… (leave empty to use the built-in key)" autocomplete="off" />
-            <button id="btn-toggle-google-free-key" class="icon-btn small" title="Show/Hide">
+            <input type="password" id="input-google-free-key" placeholder="AIzaSy…（留空时使用内置密钥）" autocomplete="off" />
+            <button id="btn-toggle-google-free-key" class="icon-btn small" title="显示／隐藏">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
               </svg>
             </button>
           </div>
-          <p class="hint">If set, this key is used; otherwise the app's built-in key (if any). No key at all → provider unavailable.</p>
+          <p class="hint">优先使用你填写的密钥，留空时尝试内置密钥；两者都没有时，此服务不可用。</p>
           <div class="field" style="margin-top: 8px;">
-            <span class="field-label">Voice</span>
+            <span class="field-label">声音</span>
             <select id="select-google-free-voice">
-              <option value="vi-VN">Tiếng Việt 🇻🇳</option>
-              <option value="en-US">English 🇺🇸</option>
+              <option value="vi-VN">越南语 🇻🇳</option>
+              <option value="en-US">英语 🇺🇸</option>
             </select>
           </div>
           <div class="slider-field" style="margin-top: 8px;">
-            <span class="field-label">Speed</span>
+            <span class="field-label">语速</span>
             <input type="range" id="range-google-free-speed" min="0.5" max="2.0" step="0.1" value="1.0" />
             <span id="google-free-speed-value" class="range-value">1.0x</span>
           </div>
-          <p class="hint">Experimental — free Google voice, may stop working anytime. Text is sent to Google.</p>
+          <p class="hint">实验性免费 Google 语音，可能失效；文本会发送至 Google。</p>
         </div>
 
         <!-- TikTok settings -->
         <div class="settings-section" id="tts-tiktok-settings" style="display:none;">
           <div class="field">
-            <span class="field-label">Voice</span>
+            <span class="field-label">声音</span>
             <select id="select-tiktok-voice">
-              <optgroup label="🇻🇳 Vietnamese">
-                <option value="BV074_streaming">Nữ (vi)</option>
-                <option value="BV075_streaming">Nam (vi)</option>
+              <optgroup label="🇻🇳 越南语">
+                <option value="BV074_streaming">女声（越南语）</option>
+                <option value="BV075_streaming">男声（越南语）</option>
               </optgroup>
-              <optgroup label="🇺🇸 English">
-                <option value="en_us_001">Female (en)</option>
-                <option value="en_us_006">Male (en)</option>
+              <optgroup label="🇺🇸 英语">
+                <option value="en_us_001">女声（英语）</option>
+                <option value="en_us_006">男声（英语）</option>
               </optgroup>
             </select>
           </div>
           <div class="slider-field" style="margin-top: 8px;">
-            <span class="field-label">Speed</span>
+            <span class="field-label">语速</span>
             <input type="range" id="range-tiktok-speed" min="0.5" max="2.0" step="0.1" value="1.0" />
             <span id="tiktok-speed-value" class="range-value">1.0x</span>
           </div>
           <div style="margin-top: 8px;">
             <span class="field-label">TikTok sessionid</span>
-            <input type="password" id="input-tiktok-session" placeholder="sessionid cookie from tiktok.com" autocomplete="off" />
-            <p class="hint">Log in at tiktok.com → DevTools → Application → Cookies → copy <code>sessionid</code>. Text is sent to TikTok.</p>
+            <input type="password" id="input-tiktok-session" placeholder="填写 tiktok.com 的 sessionid Cookie" autocomplete="off" />
+            <p class="hint">登录 tiktok.com → 开发者工具 → 应用 → Cookie → 复制 <code>sessionid</code>。文本会发送至 TikTok。</p>
           </div>
           <div style="margin-top: 8px;">
-            <span class="field-label">…or paste cURL (auto-extract sessionid)</span>
-            <textarea id="input-tiktok-curl" rows="3" placeholder="DevTools → Network → right-click a tiktok.com request → Copy → Copy as cURL, then paste here" autocomplete="off" style="width:100%; resize:vertical; font-family:monospace; font-size:11px;"></textarea>
-            <p class="hint">Only the <code>sessionid</code> is read from it and filled above; the cURL itself is not saved or sent anywhere.</p>
+            <span class="field-label">或粘贴 cURL（自动提取 sessionid）</span>
+            <textarea id="input-tiktok-curl" rows="3" placeholder="开发者工具 → 网络 → 右键点击 tiktok.com 请求 → 复制 → 复制为 cURL，然后粘贴到此处" autocomplete="off" style="width:100%; resize:vertical; font-family:monospace; font-size:11px;"></textarea>
+            <p class="hint">仅提取其中的 <code>sessionid</code> 并填入上方；cURL 内容不会被保存或发送。</p>
           </div>
         </div>
 
         <!-- Local offline (Piper/sherpa-onnx) settings -->
         <div class="settings-section" id="tts-local-settings" style="display:none;">
           <div class="field">
-            <span class="field-label">Language</span>
+            <span class="field-label">语言</span>
             <select id="select-local-lang">
-              <option value="vi">Vietnamese — Tiếng Việt</option>
-              <option value="en">English</option>
+              <option value="vi">越南语</option>
+              <option value="en">英语</option>
             </select>
           </div>
           <div class="field" style="margin-top: 8px;">
-            <span class="field-label">Voices</span>
-            <div id="local-voice-list"><p class="hint">Loading…</p></div>
+            <span class="field-label">可用声音</span>
+            <div id="local-voice-list"><p class="hint">加载中…</p></div>
           </div>
           <div class="slider-field" style="margin-top: 8px;">
-            <span class="field-label">Speed</span>
+            <span class="field-label">语速</span>
             <input type="range" id="range-local-speed" min="0.5" max="3.0" step="0.1" value="1.0" />
             <span id="local-speed-value" class="range-value">1.0x</span>
           </div>
           <div style="margin-top: 10px;">
-            <span class="field-label">Model folder</span>
+            <span class="field-label">模型文件夹</span>
             <div class="input-group">
-              <input type="text" id="input-local-models-dir" placeholder="Resolving…" readonly title="Full path where voice models are stored" />
-              <button id="btn-local-change-dir" class="icon-btn small" title="Change location" type="button">📁</button>
-              <button id="btn-local-reset-dir" class="icon-btn small" title="Reset to default app location" type="button">↺</button>
+              <input type="text" id="input-local-models-dir" placeholder="正在获取路径…" readonly title="语音模型存储的完整路径" />
+              <button id="btn-local-change-dir" class="icon-btn small" title="更改存储位置" type="button">📁</button>
+              <button id="btn-local-reset-dir" class="icon-btn small" title="恢复默认存储位置" type="button">↺</button>
             </div>
-            <p class="hint">Where downloaded voice models are stored. 100% offline once downloaded.</p>
+            <p class="hint">下载的语音模型保存在此处，下载完成后可完全离线使用。</p>
           </div>
         </div>
 
         <!-- Google TTS settings -->
         <div class="settings-section" id="tts-google-settings" style="display:none;">
-          <span class="field-label">Google Cloud API Key</span>
+          <span class="field-label">Google Cloud API 密钥</span>
           <div class="input-group">
             <input type="password" id="input-google-tts-key" placeholder="AIzaSy..." autocomplete="off" />
-            <button id="btn-toggle-google-key" class="icon-btn small" title="Show/Hide">
+            <button id="btn-toggle-google-key" class="icon-btn small" title="显示／隐藏">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
               </svg>
             </button>
           </div>
-          <p class="hint">console.cloud.google.com → Enable Text-to-Speech API → Create API Key</p>
+          <p class="hint">console.cloud.google.com → 启用 Text-to-Speech API → 创建 API 密钥</p>
           <div class="field" style="margin-top: 8px;">
-            <span class="field-label">Voice</span>
+            <span class="field-label">声音</span>
             <select id="select-google-voice">
-              <optgroup label="🇻🇳 Vietnamese">
-                <option value="vi-VN-Chirp3-HD-Aoede">Aoede — Nữ</option>
-                <option value="vi-VN-Chirp3-HD-Kore">Kore — Nữ</option>
-                <option value="vi-VN-Chirp3-HD-Leda">Leda — Nữ</option>
-                <option value="vi-VN-Chirp3-HD-Charon">Charon — Nam</option>
-                <option value="vi-VN-Chirp3-HD-Fenrir">Fenrir — Nam</option>
-                <option value="vi-VN-Chirp3-HD-Puck">Puck — Nam</option>
+              <optgroup label="🇻🇳 越南语">
+                <option value="vi-VN-Chirp3-HD-Aoede">Aoede — 女声</option>
+                <option value="vi-VN-Chirp3-HD-Kore">Kore — 女声</option>
+                <option value="vi-VN-Chirp3-HD-Leda">Leda — 女声</option>
+                <option value="vi-VN-Chirp3-HD-Charon">Charon — 男声</option>
+                <option value="vi-VN-Chirp3-HD-Fenrir">Fenrir — 男声</option>
+                <option value="vi-VN-Chirp3-HD-Puck">Puck — 男声</option>
               </optgroup>
-              <optgroup label="🇺🇸 English">
-                <option value="en-US-Chirp3-HD-Aoede">Aoede — Female</option>
-                <option value="en-US-Chirp3-HD-Kore">Kore — Female</option>
-                <option value="en-US-Chirp3-HD-Charon">Charon — Male</option>
-                <option value="en-US-Chirp3-HD-Puck">Puck — Male</option>
+              <optgroup label="🇺🇸 英语">
+                <option value="en-US-Chirp3-HD-Aoede">Aoede — 女声</option>
+                <option value="en-US-Chirp3-HD-Kore">Kore — 女声</option>
+                <option value="en-US-Chirp3-HD-Charon">Charon — 男声</option>
+                <option value="en-US-Chirp3-HD-Puck">Puck — 男声</option>
               </optgroup>
-              <optgroup label="🇯🇵 Japanese">
-                <option value="ja-JP-Chirp3-HD-Aoede">Aoede — 女性</option>
-                <option value="ja-JP-Chirp3-HD-Charon">Charon — 男性</option>
+              <optgroup label="🇯🇵 日语">
+                <option value="ja-JP-Chirp3-HD-Aoede">Aoede — 女声</option>
+                <option value="ja-JP-Chirp3-HD-Charon">Charon — 男声</option>
               </optgroup>
-              <optgroup label="🇰🇷 Korean">
-                <option value="ko-KR-Chirp3-HD-Aoede">Aoede — 여성</option>
-                <option value="ko-KR-Chirp3-HD-Charon">Charon — 남성</option>
+              <optgroup label="🇰🇷 韩语">
+                <option value="ko-KR-Chirp3-HD-Aoede">Aoede — 女声</option>
+                <option value="ko-KR-Chirp3-HD-Charon">Charon — 男声</option>
               </optgroup>
-              <optgroup label="🇨🇳 Chinese">
+              <optgroup label="🇨🇳 中文">
                 <option value="cmn-CN-Chirp3-HD-Aoede">Aoede — 女声</option>
                 <option value="cmn-CN-Chirp3-HD-Charon">Charon — 男声</option>
               </optgroup>
             </select>
           </div>
           <div class="slider-field" style="margin-top: 8px;">
-            <span class="field-label">Speed</span>
+            <span class="field-label">语速</span>
             <input type="range" id="range-google-speed" min="0.5" max="2.0" step="0.1" value="1.0" />
             <span id="google-speed-value" class="range-value">1.0x</span>
           </div>
@@ -891,23 +891,23 @@
 
         <!-- ElevenLabs settings -->
         <div class="settings-section" id="tts-elevenlabs-settings" style="display:none;">
-          <span class="field-label">ElevenLabs API Key</span>
+          <span class="field-label">ElevenLabs API 密钥</span>
           <div class="input-group">
-            <input type="password" id="input-elevenlabs-key" placeholder="Enter key..." autocomplete="off" />
-            <button id="btn-toggle-elevenlabs-key" class="icon-btn small" title="Show/Hide">
+            <input type="password" id="input-elevenlabs-key" placeholder="输入密钥…" autocomplete="off" />
+            <button id="btn-toggle-elevenlabs-key" class="icon-btn small" title="显示／隐藏">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
               </svg>
             </button>
           </div>
-          <p class="hint">elevenlabs.io — Premium quality</p>
+          <p class="hint">elevenlabs.io — 高品质语音</p>
           <div class="field" style="margin-top: 8px;">
-            <span class="field-label">Voice</span>
+            <span class="field-label">声音</span>
             <select id="select-tts-voice">
-              <option value="21m00Tcm4TlvDq8ikWAM">Rachel — Female</option>
-              <option value="EXAVITQu4vr4xnSDxMaL">Sarah — Female</option>
-              <option value="onwK4e9ZLuTAKqWW03F9">Daniel — Male</option>
-              <option value="pNInz6obpgDQGcFmaJgB">Adam — Male</option>
+              <option value="21m00Tcm4TlvDq8ikWAM">Rachel — 女声</option>
+              <option value="EXAVITQu4vr4xnSDxMaL">Sarah — 女声</option>
+              <option value="onwK4e9ZLuTAKqWW03F9">Daniel — 男声</option>
+              <option value="pNInz6obpgDQGcFmaJgB">Adam — 男声</option>
             </select>
           </div>
         </div>
@@ -915,20 +915,20 @@
 
       <!-- Tab: About -->
       <div class="settings-tab-content" id="tab-about">
-        <button class="settings-back-row" data-screen="settings-home">‹ Cài đặt</button>
+        <button class="settings-back-row" data-screen="settings-home">‹ 返回设置</button>
         <div class="settings-section about-info">
           <div class="about-app-header">
-            <span class="about-app-name">My Translator</span>
+            <span class="about-app-name">我的翻译器</span>
             <span class="about-app-version" id="about-version">v0.5.0</span>
           </div>
-          <p class="hint">Real-time speech translator for macOS & Windows</p>
+          <p class="hint">适用于 macOS 和 Windows 的实时语音翻译工具</p>
         </div>
 
         <div class="settings-section" id="section-update">
-          <span class="field-label">Updates</span>
+          <span class="field-label">应用更新</span>
           <div id="update-status" class="update-status">
-            <span id="update-status-text">Click to check for updates</span>
-            <button id="btn-check-update" class="check-update-btn" title="Check now">
+            <span id="update-status-text">点击检查更新</span>
+            <button id="btn-check-update" class="check-update-btn" title="立即检查">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="23 4 23 10 17 10"/>
                 <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
@@ -942,7 +942,7 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              <span id="update-btn-text">Download & Install</span>
+              <span id="update-btn-text">下载并安装</span>
             </button>
           </div>
           <div id="update-progress" class="update-progress" style="display:none;">
@@ -952,10 +952,10 @@
         </div>
 
         <div class="settings-section">
-          <span class="field-label">Links</span>
+          <span class="field-label">相关链接</span>
           <div class="about-links">
-            <a href="#" id="link-github">GitHub Repository</a>
-            <a href="#" id="link-issues">Report a Bug</a>
+            <a href="#" id="link-github">GitHub 项目仓库</a>
+            <a href="#" id="link-issues">反馈问题</a>
           </div>
         </div>
       </div>
@@ -966,7 +966,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          Save & Close
+          保存并关闭
         </button>
       </div>
     </div>
@@ -976,17 +976,17 @@
   <!-- ═══════════════════ SHORTCUT SHEET ═══════════════════ -->
   <div id="shortcut-sheet" class="modal-overlay" style="display:none">
     <div class="modal-card shortcut-card">
-      <h3 class="shortcut-title">⌨️ Phím tắt</h3>
+      <h3 class="shortcut-title">⌨️ 快捷键</h3>
       <table class="shortcut-table">
-        <tr><td><kbd>⌘↩</kbd></td><td>Bắt đầu / Dừng dịch</td></tr>
-        <tr><td><kbd>⌘1</kbd> / <kbd>⌘2</kbd> / <kbd>⌘3</kbd></td><td>Nguồn: System / Mic / Cả hai</td></tr>
-        <tr><td><kbd>⌘T</kbd></td><td>Bật/tắt đọc bản dịch (TTS)</td></tr>
-        <tr><td><kbd>⌘,</kbd></td><td>Mở Cài đặt</td></tr>
-        <tr><td><kbd>⌘P</kbd></td><td>Ghim cửa sổ nổi</td></tr>
-        <tr><td><kbd>⌘D</kbd></td><td>Compact — ẩn thanh công cụ</td></tr>
-        <tr><td><kbd>⌘M</kbd></td><td>Thu nhỏ cửa sổ</td></tr>
-        <tr><td><kbd>Esc</kbd></td><td>Về màn hình chính / đóng bảng này</td></tr>
-        <tr><td><kbd>?</kbd></td><td>Mở bảng phím tắt</td></tr>
+        <tr><td><kbd>⌘↩</kbd></td><td>开始／停止翻译</td></tr>
+        <tr><td><kbd>⌘1</kbd> / <kbd>⌘2</kbd> / <kbd>⌘3</kbd></td><td>音频来源：系统声音／麦克风／两者</td></tr>
+        <tr><td><kbd>⌘T</kbd></td><td>开启／关闭译文朗读</td></tr>
+        <tr><td><kbd>⌘,</kbd></td><td>打开设置</td></tr>
+        <tr><td><kbd>⌘P</kbd></td><td>切换窗口置顶</td></tr>
+        <tr><td><kbd>⌘D</kbd></td><td>精简模式 — 隐藏工具栏</td></tr>
+        <tr><td><kbd>⌘M</kbd></td><td>最小化窗口</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>返回主界面／关闭此面板</td></tr>
+        <tr><td><kbd>?</kbd></td><td>打开快捷键面板</td></tr>
       </table>
     </div>
   </div>
@@ -1000,11 +1000,11 @@
           <path d="M2 17l10 5 10-5" />
           <path d="M2 12l10 5 10-5" />
         </svg>
-        <h3>Setting up Local Models</h3>
+        <h3>配置本地模型</h3>
       </div>
 
       <div class="modal-body">
-        <p class="modal-desc">Downloading and installing MLX models for offline translation. This is a one-time setup.</p>
+        <p class="modal-desc">正在下载并安装离线翻译所需的 MLX 模型，只需配置一次。</p>
 
         <!-- Progress bar -->
         <div class="progress-container">
@@ -1018,30 +1018,30 @@
         <div class="setup-steps">
           <div class="setup-step" id="step-check">
             <span class="step-icon">⏳</span>
-            <span class="step-text">Checking Python</span>
+            <span class="step-text">检查 Python</span>
           </div>
           <div class="setup-step" id="step-venv">
             <span class="step-icon">⏳</span>
-            <span class="step-text">Creating environment</span>
+            <span class="step-text">创建运行环境</span>
           </div>
           <div class="setup-step" id="step-packages">
             <span class="step-icon">⏳</span>
-            <span class="step-text">Installing packages</span>
+            <span class="step-text">安装依赖</span>
           </div>
           <div class="setup-step" id="step-models">
             <span class="step-icon">⏳</span>
-            <span class="step-text">Downloading models (~5GB)</span>
+            <span class="step-text">下载模型（约 5 GB）</span>
           </div>
         </div>
 
         <!-- Current status -->
         <div class="setup-status">
-          <span id="setup-status-text">Preparing...</span>
+          <span id="setup-status-text">准备中…</span>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button id="btn-cancel-setup" class="secondary-btn">Cancel</button>
+        <button id="btn-cancel-setup" class="secondary-btn">取消</button>
       </div>
     </div>
   </div>

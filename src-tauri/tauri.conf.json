@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "My Translator",
+        "title": "我的翻译器",
         "width": 900,
         "height": 500,
         "minWidth": 820,

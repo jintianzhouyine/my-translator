@@ -40,7 +40,7 @@ pub fn start_local_pipeline(
     ));
 
     // Send status to frontend
-    let _ = channel.send(r#"{"type":"status","message":"Stopping old pipeline..."}"#.to_string());
+    let _ = channel.send(r#"{"type":"status","message":"正在停止上一次翻译…"}"#.to_string());
 
     // Stop existing pipeline
     stop_local_pipeline_inner(&state);
@@ -52,7 +52,7 @@ pub fn start_local_pipeline(
 
     std::thread::sleep(std::time::Duration::from_millis(500));
 
-    let _ = channel.send(r#"{"type":"status","message":"Finding pipeline script..."}"#.to_string());
+    let _ = channel.send(r#"{"type":"status","message":"正在查找本地翻译脚本…"}"#.to_string());
 
     // Find the Python script — try multiple locations
     let script_path = {
@@ -85,7 +85,7 @@ pub fn start_local_pipeline(
 
     log_to_file(&format!("Using script: {:?}", script_path));
     let _ = channel.send(format!(
-        r#"{{"type":"status","message":"Starting Python pipeline..."}}"#
+        r#"{{"type":"status","message":"正在启动 Python 翻译进程…"}}"#
     ));
 
     // Use venv python if MLX setup is complete, otherwise fall back to system python
@@ -130,7 +130,7 @@ pub fn start_local_pipeline(
 
     log_to_file(&format!("Python process spawned, PID={}", child.id()));
     let _ = channel.send(format!(
-        r#"{{"type":"status","message":"Python started (PID={}), loading models..."}}"#,
+        r#"{{"type":"status","message":"Python 已启动（PID={}），正在加载模型…"}}"#,
         child.id()
     ));
 

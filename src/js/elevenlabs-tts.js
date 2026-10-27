@@ -107,7 +107,7 @@ class ElevenLabsTTS {
 
                 if (data.error) {
                     console.error('[ElevenLabs] Server error:', data.error);
-                    this.onError?.(`TTS error: ${data.error}`);
+                    this.onError?.(`朗读错误：${data.error}`);
                 }
             } catch (e) {
                 console.warn('[ElevenLabs] Failed to parse message:', e);
@@ -116,7 +116,7 @@ class ElevenLabsTTS {
 
         this.ws.onerror = (err) => {
             console.error('[ElevenLabs] WebSocket error:', err);
-            this.onError?.('TTS connection error');
+            this.onError?.('朗读服务连接错误');
             this._setStatus('error');
         };
 
@@ -137,7 +137,7 @@ class ElevenLabsTTS {
                 setTimeout(() => this.connect(), delay);
             } else {
                 this._setStatus('disconnected');
-                this.onError?.('TTS disconnected after max retries');
+                this.onError?.('多次重试后仍无法连接朗读服务');
             }
         };
     }

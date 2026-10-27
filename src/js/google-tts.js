@@ -54,7 +54,7 @@ class GoogleTTS {
 
     connect() {
         if (!this.apiKey) {
-            this.onError?.('Google TTS API key is missing');
+            this.onError?.('缺少 Google TTS API 密钥');
             return;
         }
         this.isConnected = true;
@@ -116,7 +116,7 @@ class GoogleTTS {
             if (msg.includes('blocked')) {
                 msg = 'API blocked — enable "Cloud Text-to-Speech API" in Google Cloud Console';
             }
-            this.onError?.(`Google TTS: ${msg}`);
+            this.onError?.(`Google TTS 错误：${msg}`);
         }
 
         this._processQueue();

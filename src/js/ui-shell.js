@@ -199,7 +199,7 @@ export async function applyWindowMode(mode) {
         applyingMode = false;
     }
     const btn = document.getElementById('btn-window-mode');
-    if (btn) btn.title = mode === 'expanded' ? 'Thu về overlay nhỏ' : 'Mở rộng cửa sổ';
+    if (btn) btn.title = mode === 'expanded' ? '切换为悬浮小窗' : '展开窗口';
 }
 
 export async function toggleWindowMode() {

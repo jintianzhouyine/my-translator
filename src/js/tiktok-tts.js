@@ -55,7 +55,7 @@ class TikTokTTS {
             if (this.onAudioChunk) this.onAudioChunk(base64Audio, true);
         } catch (err) {
             console.error('[TikTok TTS] Error:', err);
-            this.onError?.(`TikTok TTS: ${err}`);
+            this.onError?.(`TikTok TTS 错误：${err}`);
         }
         this._processQueue();
     }
