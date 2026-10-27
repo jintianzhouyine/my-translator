@@ -3,7 +3,9 @@ fn main() {
     // On macOS 15+, it's in the dyld shared cache at /usr/lib/swift/
     // The crate's build script adds @rpath references, but we need to ensure
     // the linker can resolve them. Adding /usr/lib/swift as rpath covers modern macOS.
-    println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+    }
 
     // Load repo-root .env (gitignored) so secrets stay out of source. Exposes
     // GOOGLE_FREE_TTS_KEY to the crate via option_env!. Missing .env is fine —

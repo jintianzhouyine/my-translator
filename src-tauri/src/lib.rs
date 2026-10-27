@@ -26,10 +26,11 @@ fn get_platform_info() -> String {
     // Ask the hardware directly so detection is Rosetta-proof.
     let is_arm_hardware = is_apple_silicon_hardware();
     format!(
-        r#"{{"os":"{}","arch":"{}","is_arm_hardware":{},"version":"0.3.0"}}"#,
+        r#"{{"os":"{}","arch":"{}","is_arm_hardware":{},"version":"{}"}}"#,
         std::env::consts::OS,
         std::env::consts::ARCH,
-        is_arm_hardware
+        is_arm_hardware,
+        env!("CARGO_PKG_VERSION")
     )
 }
 

@@ -1,133 +1,37 @@
-name: Build & Release
+name: Build & Release ARM64
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-macos:
-    runs-on: macos-14  # Apple Silicon runner
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Apple Certificate
-        env:
-          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          CERT_PATH=$RUNNER_TEMP/certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-          echo -n "$CERTIFICATE" | base64 --decode -o $CERT_PATH
-
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-          security import $CERT_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH login.keychain
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Tauri app (signed + notarized)
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: npm run tauri build
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: |
-            src-tauri/target/release/bundle/macos/*.app
-            src-tauri/target/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
-            src-tauri/target/release/bundle/dmg/*.dmg
-
-  build-macos-intel:
-    runs-on: macos-14  # Cross-compile to Intel
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Apple Certificate
-        env:
-          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          CERT_PATH=$RUNNER_TEMP/certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-          echo -n "$CERTIFICATE" | base64 --decode -o $CERT_PATH
-
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-          security import $CERT_PATH -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH login.keychain
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Tauri app (Intel, signed + notarized)
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: npm run tauri build -- --target x86_64-apple-darwin
-
-      - name: Upload macOS Intel artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-intel-build
-          path: |
-            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
-            src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-
-  build-windows:
-    runs-on: windows-latest
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            runner: macos-14
+            target: aarch64-apple-darwin
+            bundle: dmg
+            extension: .dmg
+          - name: Windows ARM64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundle: nsis
+            extension: .exe
     steps:
       - uses: actions/checkout@v4
 
@@ -135,163 +39,81 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.target }}
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build Tauri app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-        run: npm run tauri build
+      - name: Prepare Windows ARM64 speech libraries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/prepare-windows-arm64.ps1
 
-      - name: Upload Windows artifacts
+      - name: Build installer
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+
+      - name: Verify executable architecture and release version
+        run: node scripts/verify-release.mjs ${{ matrix.target }}
+
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/bundle/nsis/*.exe.sig
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/msi/*.msi.sig
+          name: release-${{ matrix.target }}
+          if-no-files-found: error
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}/*${{ matrix.extension }}
 
-  release:
-    needs: [build-macos, build-macos-intel, build-windows]
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/setup-node@v4
         with:
-          name: macos-build
-          path: artifacts/macos
+          node-version: 20
 
-      - name: Download macOS Intel artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: macos-intel-build
-          path: artifacts/macos-intel
+          pattern: release-*
+          merge-multiple: true
+          path: artifacts
 
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          path: artifacts/windows
-
-      - name: List artifacts
-        run: find artifacts -type f | head -30
-
-      - name: Rename macOS artifacts to include arch
+      - name: Verify installers and calculate checksums
+        shell: bash
         run: |
-          # Rename aarch64 tar.gz to include arch
-          for f in artifacts/macos/macos/*.app.tar.gz; do
-            [ -f "$f" ] && mv "$f" "${f%.app.tar.gz}_aarch64.app.tar.gz"
-          done
-          for f in artifacts/macos/macos/*.app.tar.gz.sig; do
-            [ -f "$f" ] && mv "$f" "${f%.app.tar.gz.sig}_aarch64.app.tar.gz.sig"
-          done
-          # Rename x86_64 tar.gz to include arch
-          for f in artifacts/macos-intel/macos/*.app.tar.gz; do
-            [ -f "$f" ] && mv "$f" "${f%.app.tar.gz}_x64.app.tar.gz"
-          done
-          for f in artifacts/macos-intel/macos/*.app.tar.gz.sig; do
-            [ -f "$f" ] && mv "$f" "${f%.app.tar.gz.sig}_x64.app.tar.gz.sig"
-          done
-          echo "Renamed artifacts:"
-          find artifacts -name "*.tar.gz*" -type f
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import fs from 'node:fs';
+          const files = fs.readdirSync('artifacts').sort();
+          assert.equal(files.filter(f => f.endsWith('.dmg')).length, 1, 'Expected one macOS DMG');
+          assert.equal(files.filter(f => f.endsWith('.exe')).length, 1, 'Expected one Windows installer');
+          const checksums = files.map(f => `${createHash('sha256').update(fs.readFileSync(`artifacts/${f}`)).digest('hex')}  ${f}`);
+          fs.writeFileSync('artifacts/SHA256SUMS', checksums.join('\n') + '\n');
+          console.log(checksums.join('\n'));
+          JS
 
-      - name: Generate latest.json for updater
+      - name: Publish release with both installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Read signatures
-          DARWIN_AARCH64_SIG=$(cat artifacts/macos/macos/*_aarch64.app.tar.gz.sig 2>/dev/null || echo "")
-          DARWIN_X86_64_SIG=$(cat artifacts/macos-intel/macos/*_x64.app.tar.gz.sig 2>/dev/null || echo "")
-          WINDOWS_X86_64_SIG=$(cat artifacts/windows/nsis/*.exe.sig 2>/dev/null || echo "")
-
-          REPO="https://github.com/phuc-nt/my-translator/releases/download/v${VERSION}"
-
-          # Find actual filenames
-          DARWIN_AARCH64_FILE=$(ls artifacts/macos/macos/*_aarch64.app.tar.gz 2>/dev/null | head -1 | xargs basename || echo "")
-          DARWIN_X86_64_FILE=$(ls artifacts/macos-intel/macos/*_x64.app.tar.gz 2>/dev/null | head -1 | xargs basename || echo "")
-          WINDOWS_X86_64_FILE=$(ls artifacts/windows/nsis/*.exe 2>/dev/null | head -1 | xargs basename || echo "")
-
-          cat > artifacts/latest.json << EOF
-          {
-            "version": "${VERSION}",
-            "notes": "See release notes at https://github.com/phuc-nt/my-translator/releases/tag/v${VERSION}",
-            "pub_date": "${DATE}",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "${DARWIN_AARCH64_SIG}",
-                "url": "${REPO}/${DARWIN_AARCH64_FILE}"
-              },
-              "darwin-x86_64": {
-                "signature": "${DARWIN_X86_64_SIG}",
-                "url": "${REPO}/${DARWIN_X86_64_FILE}"
-              },
-              "windows-x86_64": {
-                "signature": "${WINDOWS_X86_64_SIG}",
-                "url": "${REPO}/${WINDOWS_X86_64_FILE}"
-              }
-            }
-          }
-          EOF
-
-          echo "Generated latest.json:"
-          cat artifacts/latest.json
-
-      - name: Extract release notes from changelog
-        id: notes
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-          CHANGELOG="docs/project-changelog.md"
-          OUT="release-notes.md"
-
-          # Extract section between "## v${VERSION}" and the next "## v" heading
-          awk -v tag="## v${VERSION}" '
-            $0 ~ "^" tag " " || $0 ~ "^" tag "$" { flag=1; next }
-            /^## v/ { flag=0 }
-            flag { print }
-          ' "$CHANGELOG" > "$OUT"
-
-          # Fallback if section is empty (missing entry)
-          if [ ! -s "$OUT" ]; then
-            echo "Release v${VERSION}" > "$OUT"
-            echo "" >> "$OUT"
-            echo "See commits: https://github.com/phuc-nt/my-translator/compare/...v${VERSION}" >> "$OUT"
-          fi
-
-          # Append auto-generated full changelog link
-          echo "" >> "$OUT"
-          echo "**Full Changelog**: https://github.com/phuc-nt/my-translator/compare/...v${VERSION}" >> "$OUT"
-
-          echo "--- Release notes preview ---"
-          cat "$OUT"
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          body_path: release-notes.md
-          files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.exe
-            artifacts/**/*.msi
-            artifacts/**/*.app.tar.gz
-            artifacts/**/*.sig
-            artifacts/latest.json
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME 中文版（ARM64）" \
+            --notes-file "docs/releases/$GITHUB_REF_NAME.md"
