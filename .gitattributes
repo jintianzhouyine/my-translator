@@ -1,0 +1,3 @@
+# Keep the vendored distribution byte-for-byte identical on every platform.
+src/js/vendor/xlsx.mini.min.js -text
+src/js/vendor/SHEETJS-LICENSE.txt -text

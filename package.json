@@ -4,7 +4,7 @@
   "version": "0.10.0",
   "type": "module",
   "scripts": {
-    "test": "node --test",
+    "test": "node scripts/test.mjs",
     "tauri": "tauri",
     "dev": "node scripts/tauri-with-env.mjs dev",
     "dev:default": "tauri dev",
