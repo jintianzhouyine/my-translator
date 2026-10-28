@@ -1,14 +1,17 @@
 use screencapturekit::prelude::*;
+use screencapturekit::stream::delegate_trait::ErrorHandler;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::TARGET_SAMPLE_RATE;
 
 /// Audio handler that receives CMSampleBuffer callbacks from ScreenCaptureKit
 /// and sends PCM data through a channel.
 struct AudioHandler {
-    sender: mpsc::Sender<Vec<u8>>,
+    sender: mpsc::SyncSender<Vec<u8>>,
+    is_capturing: Arc<AtomicBool>,
+    last_error: Arc<Mutex<Option<String>>>,
 }
 
 impl SCStreamOutputTrait for AudioHandler {
@@ -57,7 +60,16 @@ impl SCStreamOutputTrait for AudioHandler {
                             .collect();
 
                         if !pcm_s16.is_empty() {
-                            let _ = self.sender.send(pcm_s16);
+                            if let Err(error) = self.sender.try_send(pcm_s16) {
+                                if let mpsc::TrySendError::Full(_) = error {
+                                    if let Ok(mut last_error) = self.last_error.lock() {
+                                        *last_error = Some(
+                                            "系统声音采集积压，已停止以避免翻译过期音频".into(),
+                                        );
+                                    }
+                                }
+                                self.is_capturing.store(false, Ordering::Release);
+                            }
                         }
                     }
                 }
@@ -73,12 +85,16 @@ impl SCStreamOutputTrait for AudioHandler {
 /// Captures all system audio output and converts to PCM s16le 16kHz mono.
 pub struct SystemAudioCapture {
     is_capturing: Arc<AtomicBool>,
+    worker: Mutex<Option<std::thread::JoinHandle<()>>>,
+    last_error: Arc<Mutex<Option<String>>>,
 }
 
 impl SystemAudioCapture {
     pub fn new() -> Self {
         Self {
             is_capturing: Arc::new(AtomicBool::new(false)),
+            worker: Mutex::new(None),
+            last_error: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -88,6 +104,8 @@ impl SystemAudioCapture {
         if self.is_capturing.load(Ordering::SeqCst) {
             return Err("Already capturing".to_string());
         }
+        self.stop();
+        *self.last_error.lock().map_err(|e| e.to_string())? = None;
 
         // Get available displays
         let content = SCShareableContent::get().map_err(|e| {
@@ -109,7 +127,8 @@ impl SystemAudioCapture {
             .with_excluding_windows(&[])
             .build();
 
-        // Configure: audio only, 48kHz stereo (ScreenCaptureKit native rate)
+        // Request mono explicitly so buffer layout never doubles the PCM timeline.
+        // Configure: audio only, 48kHz mono (ScreenCaptureKit native rate)
         // Downsampling to 16kHz mono happens in AudioHandler
         let config = SCStreamConfiguration::new()
             .with_width(2) // minimal video (required by API)
@@ -117,31 +136,46 @@ impl SystemAudioCapture {
             .with_captures_audio(true)
             .with_excludes_current_process_audio(true) // Prevent TTS audio feedback loop
             .with_sample_rate(48000)
-            .with_channel_count(2);
+            .with_channel_count(1);
 
         // Create channel for audio data
-        let (sender, receiver) = mpsc::channel::<Vec<u8>>();
+        let (sender, receiver) = mpsc::sync_channel::<Vec<u8>>(100);
 
-        let handler = AudioHandler { sender };
+        let handler = AudioHandler {
+            sender,
+            is_capturing: self.is_capturing.clone(),
+            last_error: self.last_error.clone(),
+        };
+        let error_flag = self.is_capturing.clone();
+        let last_error = self.last_error.clone();
+        let delegate = ErrorHandler::new(move |error| {
+            if let Ok(mut last_error) = last_error.lock() {
+                *last_error = Some(format!("系统声音采集已停止：{error}"));
+            }
+            error_flag.store(false, Ordering::Release);
+        });
 
         // Create and start the stream
-        let mut stream = SCStream::new(&filter, &config);
-        stream.add_output_handler(handler, SCStreamOutputType::Audio);
-
+        let mut stream = SCStream::new_with_delegate(&filter, &config, delegate);
         stream
-            .start_capture()
-            .map_err(|e| format!("Failed to start system audio capture: {}", e))?;
+            .add_output_handler(handler, SCStreamOutputType::Audio)
+            .ok_or_else(|| "无法注册系统声音采集回调".to_string())?;
 
         self.is_capturing.store(true, Ordering::SeqCst);
+        if let Err(error) = stream.start_capture() {
+            self.is_capturing.store(false, Ordering::Release);
+            return Err(format!("Failed to start system audio capture: {error}"));
+        }
 
         // Keep the stream alive in a background thread
         let is_capturing = self.is_capturing.clone();
-        std::thread::spawn(move || {
+        let worker = std::thread::spawn(move || {
             while is_capturing.load(Ordering::SeqCst) {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             let _ = stream.stop_capture();
         });
+        *self.worker.lock().map_err(|e| e.to_string())? = Some(worker);
 
         Ok(receiver)
     }
@@ -149,15 +183,33 @@ impl SystemAudioCapture {
     /// Stop capturing
     pub fn stop(&self) {
         self.is_capturing.store(false, Ordering::SeqCst);
+        if let Ok(mut worker) = self.worker.lock() {
+            if let Some(worker) = worker.take() {
+                let _ = worker.join();
+            }
+        }
     }
 
     pub fn is_capturing(&self) -> bool {
         self.is_capturing.load(Ordering::SeqCst)
+    }
+
+    pub fn take_error(&self) -> Option<String> {
+        self.last_error
+            .lock()
+            .ok()
+            .and_then(|mut error| error.take())
     }
 }
 
 impl Default for SystemAudioCapture {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for SystemAudioCapture {
+    fn drop(&mut self) {
+        self.stop();
     }
 }

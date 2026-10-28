@@ -69,6 +69,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("audio-source", |context, request| {
+            use tauri::Manager;
+            let state = context
+                .app_handle()
+                .state::<commands::audio_file_source::AudioFileSourceState>();
+            commands::audio_file_source::serve_audio_source(&state, request)
+        })
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -99,12 +106,27 @@ pub fn run() {
         .manage(LocalTtsState::default())
         .manage(OpenAiState::default())
         .manage(QwenState::default())
+        .manage(audio::routed::RoutedAudioState::default())
+        .manage(commands::audio_file_source::AudioFileSourceState::default())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::audio::start_capture,
             commands::audio::stop_capture,
             commands::audio::check_permissions,
+            commands::routed_audio::list_audio_devices,
+            commands::routed_audio::start_duplex_capture,
+            commands::routed_audio::stop_duplex_capture,
+            commands::routed_audio::start_translation_output,
+            commands::routed_audio::write_translation_audio,
+            commands::routed_audio::stop_translation_output,
+            commands::audio_file_export::export_audio_file_text,
+            commands::audio_file_source::audio_file_open_source,
+            commands::audio_file_source::audio_file_prepare_part,
+            commands::audio_file_source::audio_file_read_part,
+            commands::audio_file_source::audio_file_release_part,
+            commands::audio_file_source::audio_file_cancel_prepare,
+            commands::audio_file_source::audio_file_close_source,
             commands::transcript::save_transcript,
             commands::transcript::open_transcript_dir,
             commands::transcript::list_transcripts,

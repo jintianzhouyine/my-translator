@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -15,7 +16,16 @@ pub struct TranslationTerm {
 #[serde(default)]
 pub struct CustomContext {
     pub domain: Option<String>,
+    pub general: Vec<ContextEntry>,
+    pub text: Option<String>,
+    pub terms: Vec<String>,
     pub translation_terms: Vec<TranslationTerm>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContextEntry {
+    pub key: String,
+    pub value: String,
 }
 
 /// App settings — persisted to JSON
@@ -29,10 +39,25 @@ pub struct Settings {
     /// Alibaba Cloud DashScope API key (for Qwen LiveTranslate Flash)
     #[serde(default)]
     pub qwen_api_key: String,
+    pub qwen_workspace_id: String,
+    pub qwen_region: String,
+    pub qwen_duplex_enabled: bool,
+    pub qwen_my_language: String,
+    pub qwen_peer_language: String,
+    pub qwen_microphone_device: String,
+    pub qwen_system_device: String,
+    pub qwen_output_device: String,
+    pub qwen_glossary_outbound: BTreeMap<String, String>,
+    pub qwen_glossary_inbound: BTreeMap<String, String>,
     /// Source language: "auto" or ISO 639-1 code
     pub source_language: String,
     /// Target language: ISO 639-1 code
     pub target_language: String,
+    pub translation_type: String,
+    pub language_a: String,
+    pub language_b: String,
+    pub language_hints_strict: bool,
+    pub endpoint_delay: u32,
     /// Audio source: "system" | "microphone" | "both"
     pub audio_source: String,
     /// Overlay opacity: 0.0 - 1.0
@@ -43,7 +68,7 @@ pub struct Settings {
     pub max_lines: u32,
     /// Whether to show original text alongside translation
     pub show_original: bool,
-    /// Translation mode: "soniox" | "local" | "openai"
+    /// Translation mode: "soniox" | "local" | "openai" | "qwen"
     pub translation_mode: String,
     /// Optional custom context for better transcription
     pub custom_context: Option<CustomContext>,
@@ -110,8 +135,23 @@ impl Default for Settings {
             soniox_api_key: String::new(),
             openai_api_key: String::new(),
             qwen_api_key: String::new(),
+            qwen_workspace_id: String::new(),
+            qwen_region: "cn-beijing".to_string(),
+            qwen_duplex_enabled: true,
+            qwen_my_language: "zh".to_string(),
+            qwen_peer_language: "en".to_string(),
+            qwen_microphone_device: String::new(),
+            qwen_system_device: String::new(),
+            qwen_output_device: String::new(),
+            qwen_glossary_outbound: BTreeMap::new(),
+            qwen_glossary_inbound: BTreeMap::new(),
             source_language: "auto".to_string(),
             target_language: "vi".to_string(),
+            translation_type: "one_way".to_string(),
+            language_a: "ja".to_string(),
+            language_b: "vi".to_string(),
+            language_hints_strict: false,
+            endpoint_delay: 3000,
             audio_source: "system".to_string(),
             overlay_opacity: 0.85,
             font_size: 16,
@@ -195,3 +235,61 @@ impl Settings {
 
 /// Thread-safe settings state managed by Tauri
 pub struct SettingsState(pub Mutex<Settings>);
+
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+
+    #[test]
+    fn old_settings_receive_qwen_defaults_without_losing_existing_values() {
+        let settings: Settings = serde_json::from_str(
+            r#"{"qwen_api_key":"test-key","target_language":"ja","translation_mode":"qwen"}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.qwen_api_key, "test-key");
+        assert_eq!(settings.target_language, "ja");
+        assert_eq!(settings.qwen_region, "cn-beijing");
+        assert!(settings.qwen_duplex_enabled);
+        assert_eq!(settings.qwen_my_language, "zh");
+        assert!(settings.qwen_output_device.is_empty());
+        assert!(settings.qwen_glossary_outbound.is_empty());
+    }
+
+    #[test]
+    fn directional_glossaries_and_translation_options_survive_roundtrip() {
+        let original = serde_json::json!({
+            "qwen_workspace_id": "workspace-test",
+            "qwen_region": "ap-southeast-1",
+            "qwen_duplex_enabled": false,
+            "qwen_my_language": "ja",
+            "qwen_peer_language": "en",
+            "qwen_microphone_device": "microphone-id",
+            "qwen_system_device": "headphones-id",
+            "qwen_output_device": "virtual-id",
+            "qwen_glossary_outbound": {"产品名": "ProductName"},
+            "qwen_glossary_inbound": {"ProductName": "产品名"},
+            "translation_type": "two_way",
+            "language_a": "en",
+            "language_b": "zh",
+            "language_hints_strict": true,
+            "endpoint_delay": 800,
+            "custom_context": {
+                "general": [{"key": "domain", "value": "software"}],
+                "terms": ["ProductName"],
+                "text": "产品演示",
+                "translation_terms": [{"source": "产品名", "target": "ProductName"}]
+            }
+        });
+        let settings: Settings = serde_json::from_value(original.clone()).unwrap();
+        let saved = serde_json::to_value(settings).unwrap();
+        for (key, value) in original.as_object().unwrap() {
+            if key == "custom_context" {
+                for (context_key, context_value) in value.as_object().unwrap() {
+                    assert_eq!(&saved[key][context_key], context_value);
+                }
+            } else {
+                assert_eq!(&saved[key], value, "setting {key} was changed");
+            }
+        }
+    }
+}

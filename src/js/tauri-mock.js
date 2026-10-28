@@ -64,7 +64,7 @@ if (!window.__TAURI__ && location.port === '3111') {
     window.__TAURI__ = {
         core: {
             invoke: async (cmd, args) => {
-                console.log('[tauri-mock] invoke:', cmd, args);
+                console.log('[tauri-mock] invoke:', cmd);
                 switch (cmd) {
                     case 'get_settings':
                         return mockSettings;
@@ -73,6 +73,15 @@ if (!window.__TAURI__ && location.port === '3111') {
                         return null;
                     case 'get_platform_info':
                         return JSON.stringify({ os: 'macos', arch: 'aarch64', is_arm_hardware: true });
+                    case 'list_audio_devices':
+                        return {
+                            inputs: [{ id: 'MacBook Microphone', name: 'MacBook Microphone', is_default: true }],
+                            outputs: [
+                                { id: 'Headphones', name: 'Headphones', is_default: true },
+                                { id: 'BlackHole 2ch', name: 'BlackHole 2ch', is_default: false },
+                            ],
+                            supports_system_device_selection: false,
+                        };
                     case 'microsoft_list_voices':
                         return mockMsVoices;
                     case 'local_tts_list_models':
@@ -130,6 +139,7 @@ if (!window.__TAURI__ && location.port === '3111') {
             // Browser dev: pretend the user picked a folder (null would mean "cancelled").
             open: async () => '/Users/dev/piper-models',
         },
+        opener: { openUrl: async (url) => window.open(url, '_blank', 'noopener,noreferrer') },
         window: {
             getCurrentWindow: () => ({
                 setAlwaysOnTop: async () => {},

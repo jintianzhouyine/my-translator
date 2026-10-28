@@ -1,12 +1,6 @@
-// Qwen LiveTranslate Flash language list (60 entries).
-//
-// Mirrors my-translator-mobile/src/lib/languages.ts → QWEN_LANGS. Source is
-// auto-detected by the model but Live Flash requires an explicit hint at
-// session.update time — auto-detect stalls after a single segment on real
-// mic input (verified iPhone v0.4.2, 2026-05-25). So the picker offers no
-// "auto" entry when engine = qwen.
-//
-// Ordering: common-first (English → Vietnamese → Japanese → …), rest A-Z.
+// Qwen3.8 auto-detects source speech. These are target language choices.
+// Official language/output-modality table, checked 2026-10-28:
+// https://help.aliyun.com/zh/model-studio/qwen3-5-livetranslate-flash-realtime
 
 export const QWEN_LANGS = [
     { code: 'en', name: '英语' },
@@ -73,3 +67,13 @@ export const QWEN_LANGS = [
 ];
 
 export const QWEN_LANG_CODES = new Set(QWEN_LANGS.map((l) => l.code));
+
+// 29 languages support speech output; the remaining targets are text-only.
+export const QWEN_SPEECH_LANG_CODES = new Set([
+    'zh', 'en', 'ar', 'de', 'fr', 'es', 'pt', 'id', 'it', 'ko', 'ru', 'th',
+    'vi', 'ja', 'tr', 'hi', 'ms', 'nl', 'ur', 'nb', 'sv', 'da', 'he', 'fi',
+    'pl', 'is', 'cs', 'fil', 'fa',
+]);
+
+export const QWEN_SPEECH_LANGS = QWEN_LANGS.filter((language) =>
+    QWEN_SPEECH_LANG_CODES.has(language.code));

@@ -60,6 +60,12 @@ jobs:
         shell: pwsh
         run: ./scripts/prepare-windows-arm64.ps1
 
+      - name: Test translation sessions and settings
+        run: npm test
+
+      - name: Test native protocol and audio routing
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib --target ${{ matrix.target }}
+
       - name: Build installer
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
 

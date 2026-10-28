@@ -9,22 +9,15 @@ use super::TARGET_SAMPLE_RATE;
 /// Captures from the default input device and converts to PCM s16le 16kHz mono.
 pub struct MicCapture {
     is_capturing: Arc<AtomicBool>,
-    /// We store the stream here to keep it alive.
-    /// cpal::Stream is !Send, so can't move to another thread.
-    /// Using Box<dyn StreamTrait> to erase the concrete type.
-    _stream: Option<cpal::Stream>,
+    // The CPAL stream is created and dropped inside this owner thread.
+    worker: Option<std::thread::JoinHandle<()>>,
 }
-
-// SAFETY: MicCapture is only accessed through Mutex in AudioState,
-// so concurrent access is properly synchronized. The cpal::Stream
-// is created and dropped on the same thread (main thread via Tauri command).
-unsafe impl Send for MicCapture {}
 
 impl MicCapture {
     pub fn new() -> Self {
         Self {
             is_capturing: Arc::new(AtomicBool::new(false)),
-            _stream: None,
+            worker: None,
         }
     }
 
@@ -35,148 +28,61 @@ impl MicCapture {
             return Err("Already capturing".to_string());
         }
 
-        let host = cpal::default_host();
-
-        // List available input devices for debugging
-        let input_devices: Vec<String> = host
-            .input_devices()
-            .map(|devs| devs.filter_map(|d| d.name().ok()).collect())
-            .unwrap_or_default();
-        println!("[Mic] Available input devices: {:?}", input_devices);
-
-        if input_devices.is_empty() {
-            return Err(
-                "No microphone found. Connect an external microphone or headset.".to_string(),
-            );
-        }
-
-        let device = host
-            .default_input_device()
-            .ok_or("No default microphone found. Connect an external microphone or headset.")?;
-
-        println!("[Mic] Device: {:?}", device.name().unwrap_or_default());
-
-        // Try default config first, fallback to supported configs
-        let default_config = device
-            .default_input_config()
-            .or_else(|e| {
-                println!(
-                    "[Mic] default_input_config failed: {}, trying supported configs",
-                    e
-                );
-                // Fallback: find a supported config
-                let mut configs = device
-                    .supported_input_configs()
-                    .map_err(|e2| format!("No supported input configs: {}", e2))?;
-                // Prefer F32, then I16
-                configs
-                    .find(|c| c.sample_format() == cpal::SampleFormat::F32)
-                    .or_else(|| {
-                        device
-                            .supported_input_configs()
-                            .ok()
-                            .and_then(|mut c| c.next())
-                    })
-                    .map(|c| {
-                        // Pick sample rate: prefer 48kHz, else max
-                        let rate =
-                            if c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000 {
-                                cpal::SampleRate(48000)
-                            } else {
-                                c.max_sample_rate()
-                            };
-                        c.with_sample_rate(rate)
-                    })
-                    .ok_or_else(|| format!("No suitable input config found (original: {})", e))
-            })
-            .map_err(|e| format!("Failed to get default input config: {}", e))?;
-
-        println!(
-            "[Mic] Config: rate={}, channels={}, format={:?}",
-            default_config.sample_rate().0,
-            default_config.channels(),
-            default_config.sample_format()
-        );
-
-        let source_sample_rate = default_config.sample_rate().0;
-        let source_channels = default_config.channels() as usize;
-
-        let (sender, receiver) = mpsc::channel::<Vec<u8>>();
-        self.is_capturing.store(true, Ordering::SeqCst);
-        let is_capturing = self.is_capturing.clone();
-
-        // Build the input config targeting our desired format
-        let stream_config = cpal::StreamConfig {
-            channels: default_config.channels(),
-            sample_rate: default_config.sample_rate(),
-            buffer_size: cpal::BufferSize::Default,
-        };
-
-        let target_rate = TARGET_SAMPLE_RATE;
-        let err_fn = |err| eprintln!("Microphone input error: {}", err);
-
-        let stream = match default_config.sample_format() {
-            cpal::SampleFormat::F32 => device.build_input_stream(
-                &stream_config,
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    if !is_capturing.load(Ordering::SeqCst) {
+        self.stop();
+        self.is_capturing = Arc::new(AtomicBool::new(true));
+        let capture_flag = self.is_capturing.clone();
+        let worker_flag = capture_flag.clone();
+        let (sender, receiver) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || {
+            match build_stream(worker_flag.clone(), sender) {
+                Ok(stream) => {
+                    if !worker_flag.load(Ordering::Acquire) {
                         return;
                     }
-                    let pcm = convert_f32_to_pcm_s16le(
-                        data,
-                        source_channels,
-                        source_sample_rate,
-                        target_rate,
-                    );
-                    if !pcm.is_empty() {
-                        let _ = sender.send(pcm);
+                    match stream.play() {
+                        Ok(()) => {
+                            if ready_tx.send(Ok(())).is_ok() {
+                                while worker_flag.load(Ordering::Acquire) {
+                                    std::thread::sleep(std::time::Duration::from_millis(10));
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            let _ =
+                                ready_tx.send(Err(format!("Failed to start mic stream: {error}")));
+                        }
                     }
-                },
-                err_fn,
-                None,
-            ),
-            cpal::SampleFormat::I16 => {
-                let is_capturing = self.is_capturing.clone();
-                device.build_input_stream(
-                    &stream_config,
-                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        if !is_capturing.load(Ordering::SeqCst) {
-                            return;
-                        }
-                        let pcm = convert_i16_to_pcm_s16le(
-                            data,
-                            source_channels,
-                            source_sample_rate,
-                            target_rate,
-                        );
-                        if !pcm.is_empty() {
-                            let _ = sender.send(pcm);
-                        }
-                    },
-                    err_fn,
-                    None,
-                )
+                }
+                Err(error) => {
+                    let _ = ready_tx.send(Err(error));
+                }
             }
-            format => {
-                return Err(format!("Unsupported sample format: {:?}", format));
+            worker_flag.store(false, Ordering::Release);
+        });
+        match ready_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(Ok(())) => {
+                self.worker = Some(worker);
+                Ok(receiver)
+            }
+            result => {
+                capture_flag.store(false, Ordering::Release);
+                // A pending OS permission prompt must not block the command forever.
+                // This generation keeps its own stop flag, so it cannot restart later.
+                drop(worker);
+                match result {
+                    Ok(Err(error)) => Err(error),
+                    _ => Err("Microphone startup timed out; check microphone permission".into()),
+                }
             }
         }
-        .map_err(|e| format!("Failed to build input stream: {}", e))?;
-
-        stream
-            .play()
-            .map_err(|e| format!("Failed to start mic stream: {}", e))?;
-
-        // Store stream to keep it alive
-        self._stream = Some(stream);
-
-        Ok(receiver)
     }
 
     pub fn stop(&mut self) {
-        self.is_capturing.store(false, Ordering::SeqCst);
-        // Drop the stream to stop capturing
-        self._stream = None;
+        self.is_capturing.store(false, Ordering::Release);
+        if let Some(worker) = self.worker.take() {
+            let _ = worker.join();
+        }
     }
 
     pub fn is_capturing(&self) -> bool {
@@ -188,6 +94,142 @@ impl Default for MicCapture {
     fn default() -> Self {
         Self::new()
     }
+}
+
+impl Drop for MicCapture {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+fn build_stream(
+    capture_flag: Arc<AtomicBool>,
+    sender: mpsc::Sender<Vec<u8>>,
+) -> Result<cpal::Stream, String> {
+    let host = cpal::default_host();
+
+    // List available input devices for debugging
+    let input_devices: Vec<String> = host
+        .input_devices()
+        .map(|devs| devs.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default();
+    println!("[Mic] Available input devices: {:?}", input_devices);
+
+    if input_devices.is_empty() {
+        return Err("No microphone found. Connect an external microphone or headset.".to_string());
+    }
+
+    let device = host
+        .default_input_device()
+        .ok_or("No default microphone found. Connect an external microphone or headset.")?;
+
+    println!("[Mic] Device: {:?}", device.name().unwrap_or_default());
+
+    // Try default config first, fallback to supported configs
+    let default_config = device
+        .default_input_config()
+        .or_else(|e| {
+            println!(
+                "[Mic] default_input_config failed: {}, trying supported configs",
+                e
+            );
+            // Fallback: find a supported config
+            let mut configs = device
+                .supported_input_configs()
+                .map_err(|e2| format!("No supported input configs: {}", e2))?;
+            // Prefer F32, then I16
+            configs
+                .find(|c| c.sample_format() == cpal::SampleFormat::F32)
+                .or_else(|| {
+                    device
+                        .supported_input_configs()
+                        .ok()
+                        .and_then(|mut c| c.next())
+                })
+                .map(|c| {
+                    // Pick sample rate: prefer 48kHz, else max
+                    let rate = if c.min_sample_rate().0 <= 48000 && c.max_sample_rate().0 >= 48000 {
+                        cpal::SampleRate(48000)
+                    } else {
+                        c.max_sample_rate()
+                    };
+                    c.with_sample_rate(rate)
+                })
+                .ok_or_else(|| format!("No suitable input config found (original: {})", e))
+        })
+        .map_err(|e| format!("Failed to get default input config: {}", e))?;
+
+    println!(
+        "[Mic] Config: rate={}, channels={}, format={:?}",
+        default_config.sample_rate().0,
+        default_config.channels(),
+        default_config.sample_format()
+    );
+
+    let source_sample_rate = default_config.sample_rate().0;
+    let source_channels = default_config.channels() as usize;
+
+    let is_capturing = capture_flag.clone();
+
+    // Build the input config targeting our desired format
+    let stream_config = cpal::StreamConfig {
+        channels: default_config.channels(),
+        sample_rate: default_config.sample_rate(),
+        buffer_size: cpal::BufferSize::Default,
+    };
+
+    let target_rate = TARGET_SAMPLE_RATE;
+    let err_fn = |err| eprintln!("Microphone input error: {}", err);
+
+    let stream = match default_config.sample_format() {
+        cpal::SampleFormat::F32 => device.build_input_stream(
+            &stream_config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                if !is_capturing.load(Ordering::SeqCst) {
+                    return;
+                }
+                let pcm = convert_f32_to_pcm_s16le(
+                    data,
+                    source_channels,
+                    source_sample_rate,
+                    target_rate,
+                );
+                if !pcm.is_empty() {
+                    let _ = sender.send(pcm);
+                }
+            },
+            err_fn,
+            None,
+        ),
+        cpal::SampleFormat::I16 => {
+            let is_capturing = capture_flag.clone();
+            device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    if !is_capturing.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let pcm = convert_i16_to_pcm_s16le(
+                        data,
+                        source_channels,
+                        source_sample_rate,
+                        target_rate,
+                    );
+                    if !pcm.is_empty() {
+                        let _ = sender.send(pcm);
+                    }
+                },
+                err_fn,
+                None,
+            )
+        }
+        format => {
+            return Err(format!("Unsupported sample format: {:?}", format));
+        }
+    }
+    .map_err(|e| format!("Failed to build input stream: {}", e))?;
+
+    Ok(stream)
 }
 
 /// Convert f32 audio to PCM s16le, with mono mixdown and resampling

@@ -26,12 +26,13 @@
           <span id="settings-badge" class="settings-badge" style="display:none"></span>
         </button>
 
-        <!-- Activity switcher — the 3 first-class spaces of the app -->
+        <!-- Activity switcher -->
         <div class="activity-switcher">
           <button class="activity-tab active" data-activity="live" title="实时翻译" type="button">
             🎙 实时翻译<span id="live-tab-badge" class="live-tab-badge"></span>
           </button>
           <button class="activity-tab" data-activity="read" title="文本朗读（TTS）" type="button">📖 文本朗读</button>
+          <button class="activity-tab" data-activity="audio-file" title="翻译本地音频并导出字幕" type="button">🎧 音频翻译</button>
           <button class="activity-tab" data-activity="library" title="已保存的翻译记录" type="button">📚 翻译记录</button>
         </div>
 
@@ -173,9 +174,7 @@
         </div>
       </div>
 
-      <!-- Engine picker — shown before the first session each launch.
-           Two cards because OpenAI Realtime is structurally different from
-           Soniox/Local (text+voice fused, no two-way, no custom TTS). -->
+      <!-- Engine picker — shown before the first session each launch. -->
       <div id="engine-picker" class="engine-picker" style="display:none">
         <p class="engine-picker-title">选择翻译模式</p>
         <div class="engine-cards">
@@ -201,12 +200,12 @@
           </button>
           <button class="engine-card" data-engine-class="qwen" type="button">
             <div class="engine-card-icon">🌏</div>
-            <div class="engine-card-name">Qwen LiveTranslate Flash</div>
-            <div class="engine-card-meta">免费预览 · 仅字幕</div>
+            <div class="engine-card-name">Qwen3.8 实时通话翻译</div>
+            <div class="engine-card-meta">云端 · 按使用量计费</div>
             <ul class="engine-card-feats">
-              <li>60 多种语言</li>
-              <li>约 4 秒显示首段译文</li>
-              <li>阿里云百炼（新加坡）</li>
+              <li>60 种字幕语言 · 29 种译音语言</li>
+              <li>双向通话与术语词典</li>
+              <li>阿里云百炼（北京／新加坡）</li>
             </ul>
           </button>
         </div>
@@ -232,6 +231,88 @@
         <span id="read-progress" class="read-progress"></span>
       </div>
       <div id="read-hint" class="read-hint"></div>
+    </div>
+
+    <div id="audio-file-panel" class="activity-panel" data-activity="audio-file">
+      <div class="audio-file-top">
+        <div class="audio-file-file-row">
+          <input id="input-audio-file" type="file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg" hidden />
+          <input id="input-audio-file-parts" type="file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg" multiple hidden />
+          <button id="btn-audio-file-choose" class="read-btn" type="button">选择本地音频</button>
+          <div class="audio-file-file-info">
+            <strong id="audio-file-name">尚未选择音频</strong>
+            <span id="audio-file-metadata">WAV、MP3、M4A、AAC、FLAC、OGG · 超大或长音频自动分段</span>
+          </div>
+        </div>
+        <div class="audio-file-split-section">
+          <div class="audio-file-split-heading">
+            <strong>分段处理</strong>
+            <button id="btn-audio-file-choose-parts" class="btn-secondary small" type="button">导入已切分音频</button>
+          </div>
+          <p class="hint audio-file-split-help">默认自动分段，连续处理完整音频。失败时可修改分割点重试，或导入已切分文件；每片须不超过 100 MiB／30 分钟。手动导入仅处理所选片段，请按顺序命名并检查下方顺序，时间轴按此顺序连续拼接。</p>
+          <div class="audio-file-split-options">
+            <label>分段方式<select id="select-audio-file-split-mode"><option value="auto">自动分段</option><option value="manual">自定义分割点</option></select></label>
+            <label id="audio-file-split-duration-field">每段时长<select id="select-audio-file-split-minutes"><option value="5">5 分钟</option><option value="10">10 分钟</option><option value="20" selected>20 分钟</option><option value="30">30 分钟</option></select></label>
+            <button id="btn-audio-file-split" class="btn-secondary small" type="button" disabled>重新分段</button>
+          </div>
+          <div id="audio-file-split-points-field" hidden>
+            <label for="input-audio-file-split-points">中间分割时间点（每行一个）</label>
+            <textarea id="input-audio-file-split-points" rows="3" placeholder="00:10:00&#10;00:20:00" spellcheck="false"></textarea>
+            <p class="hint">格式为 时:分:秒，可带毫秒。修改或删除时间点即可调整分段；起点和终点自动补齐，覆盖完整音频。每段须不超过 30 分钟。</p>
+          </div>
+          <p id="audio-file-split-status" class="hint" role="status" aria-live="polite">选择音频后自动生成分段；分段操作仅在本机进行。</p>
+          <div id="audio-file-parts" class="audio-file-parts" aria-label="分段起止时间"></div>
+          <div id="audio-file-parts-pagination" class="audio-file-pagination" hidden>
+            <button id="btn-audio-file-parts-prev" class="btn-secondary small" type="button">上一页</button>
+            <span id="audio-file-parts-page-label"></span>
+            <button id="btn-audio-file-parts-next" class="btn-secondary small" type="button">下一页</button>
+          </div>
+        </div>
+        <div class="audio-file-options">
+          <label>翻译为<select id="select-audio-file-language" aria-label="音频翻译目标语言"></select></label>
+          <label>使用已保存的词典<select id="select-audio-file-glossary">
+            <option value="none">不使用词典</option>
+            <option value="inbound">本机字幕词典</option>
+            <option value="outbound">发给对方的词典</option>
+          </select></label>
+          <button id="btn-audio-file-settings" class="btn-secondary small" type="button">百炼与词典设置</button>
+        </div>
+        <div class="audio-file-options">
+          <label>处理方式<select id="select-audio-file-parallelism"><option value="2" selected>加速 · 最多 2 段并行</option><option value="1">稳定 · 单段依次处理</option></select></label>
+          <label>失败后自动重试<select id="select-audio-file-retries"><option value="2" selected>最多重试 2 次</option><option value="1">最多重试 1 次</option><option value="0">不自动重试</option></select></label>
+        </div>
+        <p class="audio-file-disclosure">沿用当前 Qwen 模型。加速模式会将非手动导入文件细分为最多 2 分钟的片段，并行处理；单段模式约需原音频时长，实际耗时受网络和服务限流影响。已切分文件按文件边界处理。音频在点击开始后发送至已配置的阿里云百炼；重试沿用本轮语言和词典，会重复调用失败片段，可能再次计费。</p>
+        <div class="audio-file-actions">
+          <button id="btn-audio-file-start" class="read-btn read-btn-primary" type="button" disabled>开始翻译</button>
+          <button id="btn-audio-file-retry-failed" class="read-btn" type="button" hidden>重试未完成片段</button>
+          <button id="btn-audio-file-cancel" class="read-btn" type="button" hidden>取消翻译</button>
+          <span id="audio-file-status" role="status" aria-live="polite">选择音频后开始翻译</span>
+        </div>
+        <progress id="audio-file-progress" max="1" value="0" hidden aria-label="音频翻译进度"></progress>
+        <div id="audio-file-player-wrap" hidden>
+          <p id="audio-file-playback-label" class="hint">原始音频 · 点击带时间的字幕可播放对应原音</p>
+          <audio id="audio-file-player" controls preload="metadata"></audio>
+        </div>
+      </div>
+      <div class="audio-file-results">
+        <div class="audio-file-export-row">
+          <label for="select-audio-file-export-content">导出</label>
+          <select id="select-audio-file-export-content"><option value="translated">译文</option><option value="original">原文</option><option value="bilingual">原文与译文</option></select>
+          <button id="btn-audio-file-export-srt" class="btn-secondary small" type="button" disabled>SRT</button>
+          <button id="btn-audio-file-export-vtt" class="btn-secondary small" type="button" disabled>VTT</button>
+          <button id="btn-audio-file-export-txt" class="btn-secondary small" type="button" disabled>TXT</button>
+        </div>
+        <p id="audio-file-export-hint" class="hint"></p>
+        <div id="audio-file-provisionals" class="audio-file-provisionals" aria-label="正在生成的译文，未定稿" hidden></div>
+        <div id="audio-file-segments" class="audio-file-segments" aria-label="音频翻译结果">
+          <p class="audio-file-empty">翻译结果将显示在这里，支持逐段回听原始音频。</p>
+        </div>
+        <div id="audio-file-pagination" class="audio-file-pagination" hidden>
+          <button id="btn-audio-file-prev" class="btn-secondary small" type="button">上一页</button>
+          <span id="audio-file-page-label"></span>
+          <button id="btn-audio-file-next" class="btn-secondary small" type="button">下一页</button>
+        </div>
+      </div>
     </div>
 
     <!-- Library activity panel — saved sessions (list + viewer) -->
@@ -348,12 +429,12 @@
             <option value="soniox">☁️ Soniox</option>
             <option value="local">🖥️ 本地 MLX</option>
             <option value="openai">⚡ OpenAI Realtime</option>
-            <option value="qwen">🌏 Qwen LiveTranslate Flash</option>
+            <option value="qwen">🌏 Qwen3.8 实时通话翻译</option>
           </select>
           <p class="hint" id="hint-mode-soniox">云端 · 70 多种语言 · 约 0.12 美元／小时</p>
           <p class="hint" id="hint-mode-local" style="display:none">离线 · 免费 · 约 3–4 秒延迟</p>
           <p class="hint" id="hint-mode-openai" style="display:none">云端 · 13 种语言 · 仅字幕</p>
-          <p class="hint" id="hint-mode-qwen" style="display:none">云端 · 60 多种语言 · 仅字幕 · 免费预览 · 需指定源语言</p>
+          <p class="hint" id="hint-mode-qwen" style="display:none">云端 · 双向通话 · 我的译音发给对方，对方的话显示字幕</p>
           <div id="openai-cost-warning" class="cost-warning" style="display:none">
             ⚠️ 约 4 美元／小时，费用高于 Soniox，由你的 OpenAI 账户支付。
           </div>
@@ -406,7 +487,90 @@
               </svg>
             </button>
           </div>
-          <p class="hint">获取百炼密钥： <a href="#" id="link-qwen">bailian.console.alibabacloud.com</a> · 免费预览</p>
+          <p class="hint">获取百炼密钥： <a href="#" id="link-qwen">百炼控制台</a> · 按使用量计费</p>
+        </div>
+
+        <div id="section-qwen-options" style="display:none">
+          <div class="settings-section">
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label" for="select-qwen-region">服务地域</label>
+                <select id="select-qwen-region">
+                  <option value="cn-beijing">中国内地 · 北京</option>
+                  <option value="ap-southeast-1">国际 · 新加坡</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="input-qwen-workspace">业务空间 ID</label>
+                <input type="text" id="input-qwen-workspace" placeholder="填写百炼业务空间 ID" autocomplete="off" spellcheck="false" />
+              </div>
+            </div>
+            <p class="hint">密钥和业务空间须属于所选地域。使用 Qwen3.8-LiveTranslate。</p>
+          </div>
+
+          <div class="settings-section">
+            <label class="checkbox-option">
+              <input type="checkbox" id="check-qwen-duplex" checked />
+              <span class="checkbox-label">双向通话：将我的话翻译后发给对方</span>
+            </label>
+            <p class="hint" id="qwen-direction-hint">对方的话在本机显示字幕，你的译音发送到下方指定的设备。</p>
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label" for="select-qwen-my-language">我阅读字幕的语言</label>
+                <select id="select-qwen-my-language"></select>
+              </div>
+              <div class="field" data-qwen-duplex-field>
+                <label class="field-label" for="select-qwen-peer-language">对方听到的语言</label>
+                <select id="select-qwen-peer-language"></select>
+              </div>
+            </div>
+            <p class="hint">自动识别说话语言；字幕支持 60 种语言，译音支持 29 种语言。</p>
+          </div>
+
+          <div class="settings-section">
+            <div class="terms-header">
+              <span class="field-label">通话音频设备</span>
+              <button type="button" id="btn-qwen-refresh-devices" class="btn-secondary small">刷新设备</button>
+            </div>
+            <div class="field" data-qwen-duplex-field>
+              <label class="field-label" for="select-qwen-microphone">我的麦克风</label>
+              <select id="select-qwen-microphone"><option value="">系统默认麦克风</option></select>
+            </div>
+            <div class="field" id="qwen-system-device-field" style="margin-top:10px">
+              <label class="field-label" for="select-qwen-system-device">对方声音所在的播放设备</label>
+              <select id="select-qwen-system-device"><option value="">系统默认播放设备</option></select>
+            </div>
+            <p class="hint" id="qwen-system-device-hint">采集会议软件播放的声音，用于生成本机字幕。</p>
+            <div class="field" data-qwen-duplex-field style="margin-top:10px">
+              <label class="field-label" for="select-qwen-output-device">发给对方的译音输出</label>
+              <select id="select-qwen-output-device"><option value="">请选择虚拟音频设备…</option></select>
+              <p class="hint">选择已安装的虚拟设备；在会议软件中，将它对应的输入设备设为麦克风。会议扬声器使用耳机，不要使用这个虚拟设备。</p>
+            </div>
+            <p class="hint" id="qwen-device-status" role="status" aria-live="polite"></p>
+            <p class="hint" data-qwen-duplex-field>本软件不会自动安装虚拟音频驱动。请使用耳机，避免外放声音再次进入麦克风。</p>
+          </div>
+
+          <div class="settings-section">
+            <span class="field-label">专有名词与术语词典 <span class="optional-badge">可选</span></span>
+            <p class="hint">可导入 Excel（.xlsx），前两列分别填写「原词、译法」，第一行可为表头。也支持 CSV、TSV、TXT 和 JSON。每个方向最多 1,000 条。</p>
+            <input type="file" id="input-qwen-glossary-file" accept=".xlsx,.csv,.tsv,.txt,.json" hidden />
+            <div class="context-subsection" data-qwen-duplex-field>
+              <div class="terms-header">
+                <label class="hint" for="input-qwen-glossary-outbound">我的话 → 对方听到的译文</label>
+                <button type="button" id="btn-qwen-import-outbound" class="btn-secondary small">导入词表</button>
+              </div>
+              <textarea id="input-qwen-glossary-outbound" rows="3" placeholder="灰度发布 = canary release&#10;产品名 = ProductName" spellcheck="false"></textarea>
+            </div>
+            <div class="context-subsection">
+              <div class="terms-header">
+                <label class="hint" for="input-qwen-glossary-inbound">对方的话 → 我阅读的字幕</label>
+                <button type="button" id="btn-qwen-import-inbound" class="btn-secondary small">导入词表</button>
+              </div>
+              <textarea id="input-qwen-glossary-inbound" rows="3" placeholder="canary release = 灰度发布&#10;ProductName = 产品名" spellcheck="false"></textarea>
+            </div>
+            <p class="hint">手动编辑时，每行填写「原词 = 指定译法」。两个方向独立保存，不会自动反转。</p>
+            <p class="hint" id="qwen-glossary-import-status" role="status" aria-live="polite"></p>
+          </div>
         </div>
 
         <div class="settings-section" id="section-languages">
@@ -615,7 +779,7 @@
           </div>
         </div>
 
-        <div class="settings-section">
+        <div class="settings-section" id="section-audio-source">
           <span class="field-label">音频来源</span>
           <div class="radio-group" id="audio-source-group">
             <label class="radio-option"><input type="radio" name="audio-source" value="system" checked /><span class="radio-label">系统声音</span></label>
@@ -1046,6 +1210,37 @@
     </div>
   </div>
 
+  <dialog id="qwen-import-dialog" class="qwen-import-dialog" aria-labelledby="qwen-import-title">
+    <h3 id="qwen-import-title">导入专有名词</h3>
+    <p id="qwen-import-file-name" class="hint"></p>
+    <div class="field" id="qwen-import-sheet-field" hidden>
+      <label class="field-label" for="select-qwen-import-sheet">工作表</label>
+      <select id="select-qwen-import-sheet"></select>
+    </div>
+    <div class="qwen-import-options">
+      <div class="field">
+        <label class="field-label" for="select-qwen-import-mode">导入方式</label>
+        <select id="select-qwen-import-mode"><option value="merge">合并到现有词典</option><option value="replace">替换当前词典</option></select>
+      </div>
+      <div class="field" id="qwen-import-conflicts-field">
+        <label class="field-label" for="select-qwen-import-conflicts">同名词的译法不同时</label>
+        <select id="select-qwen-import-conflicts"><option value="keep">保留现有译法</option><option value="overwrite">采用文件中的译法</option></select>
+      </div>
+    </div>
+    <label class="qwen-import-reverse"><input type="checkbox" id="check-qwen-import-reverse" /> 交换原词和译法（用于反向翻译）</label>
+    <p id="qwen-import-summary" role="status" aria-live="polite"></p>
+    <p id="qwen-import-error" class="qwen-import-error" role="alert"></p>
+    <p id="qwen-import-preview-hint" class="hint"></p>
+    <div class="qwen-import-table-wrap">
+      <table class="qwen-import-table"><thead><tr><th>原词</th><th>采用的译法</th><th>处理</th></tr></thead><tbody id="qwen-import-preview-body"></tbody></table>
+    </div>
+    <p class="hint">确认后先填写到设置页；点击「保存并关闭」才会保存并应用。文件仅在本机读取。</p>
+    <div class="qwen-import-actions">
+      <button type="button" id="btn-qwen-import-cancel" class="btn-secondary">取消</button>
+      <button type="button" id="btn-qwen-import-apply" class="btn-primary" disabled>确认导入</button>
+    </div>
+  </dialog>
+  <script src="/js/vendor/xlsx.mini.min.js"></script>
   <script src="/js/tauri-mock.js"></script>
   <script type="module" src="/js/settings.js"></script>
   <script type="module" src="/js/ui.js"></script>

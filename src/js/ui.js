@@ -45,11 +45,9 @@ export class TranscriptUI {
 
     set provider(value) {
         this._provider = value;
-        // Qwen Live Flash has no source channel — strip the dual-view CSS class
-        // so the overlay reverts to single-column layout even if viewMode='dual'.
         const overlay = document.getElementById('overlay-view');
         if (overlay) {
-            const wantsDual = this.viewMode === 'dual' && value !== 'qwen';
+            const wantsDual = this.viewMode === 'dual';
             overlay.classList.toggle('dual-view', wantsDual);
         }
     }
@@ -71,7 +69,7 @@ export class TranscriptUI {
             this.viewMode = viewMode;
             const overlay = document.getElementById('overlay-view');
             if (overlay) {
-                const wantsDual = viewMode === 'dual' && this._provider !== 'qwen';
+                const wantsDual = viewMode === 'dual';
                 overlay.classList.toggle('dual-view', wantsDual);
             }
             this._render();
@@ -139,6 +137,35 @@ export class TranscriptUI {
         this._render();
     }
 
+    // Qwen streams two independent directions and may deliver the source after
+    // the translation. Explicit IDs prevent cross-speaker or cross-direction pairing.
+    upsertQwenSegment({ id, original = '', translation = '', direction, speaker, language, isFinal = false }) {
+        this._removeListening();
+        let segment = this.segments.find((entry) => entry.id === id);
+        const logged = this.sessionLog.find((entry) => entry.id === id);
+        if (!segment && !logged) {
+            segment = { id, createdAt: Date.now(), confidence: null };
+            this.segments.push(segment);
+        }
+        const value = {
+            ...(segment || logged), original, translation, direction, speaker: speaker || null,
+            language: language || null, status: isFinal || logged ? 'translated' : 'provisional',
+        };
+        if (segment) Object.assign(segment, value);
+        if (logged) Object.assign(logged, value);
+        else if (isFinal) this.sessionLog.push({ ...value });
+        this._render();
+    }
+
+    _speakerLabel(segment) {
+        if (segment.direction) {
+            const label = segment.direction === 'outbound' ? '我 → 对方' : '对方 → 我';
+            return segment.direction === 'inbound' && segment.speaker
+                ? `${label} · 发言人 ${segment.speaker}` : label;
+        }
+        return segment.speaker ? `说话者 ${segment.speaker}` : '';
+    }
+
     /**
      * Update provisional (in-progress) text
      */
@@ -154,9 +181,11 @@ export class TranscriptUI {
      * Clear provisional text
      */
     clearProvisional() {
+        this.segments = this.segments.filter((segment) => segment.status !== 'provisional');
         this.provisionalText = '';
         this.provisionalSpeaker = null;
         this.provisionalLanguage = null;
+        this.sourceProvisionalText = '';
         this._render();
     }
 
@@ -294,7 +323,7 @@ export class TranscriptUI {
 
         // Transcript entries
         for (const seg of this.segments) {
-            if (seg.speaker) lines.push(`**说话者 ${seg.speaker}：**`);
+            if (this._speakerLabel(seg)) lines.push(`**${this._speakerLabel(seg)}：**`);
             if (seg.original) lines.push(`> ${seg.original}`);
             if (seg.translation) lines.push(seg.translation);
             lines.push('');
@@ -343,7 +372,7 @@ export class TranscriptUI {
 
         // Transcript entries
         for (const seg of this.sessionLog) {
-            if (seg.speaker) lines.push(`**说话者 ${seg.speaker}：**`);
+            if (this._speakerLabel(seg)) lines.push(`**${this._speakerLabel(seg)}：**`);
             if (seg.original) lines.push(`> ${seg.original}`);
             if (seg.translation) lines.push(seg.translation);
             lines.push('');
@@ -402,10 +431,7 @@ export class TranscriptUI {
         this._ensureContent();
         this._trimSegments();
 
-        // Qwen Live Flash is translation-only (no source transcript channel),
-        // so force single-panel even when the user picked dual view — otherwise
-        // the source panel sits empty / shows dim provisional noise.
-        if (this.viewMode === 'dual' && this.provider !== 'qwen') {
+        if (this.viewMode === 'dual') {
             this._renderDual();
         } else {
             this._renderSingle();
@@ -419,9 +445,10 @@ export class TranscriptUI {
 
         for (const seg of this.segments) {
             // Speaker label
-            if (seg.speaker && seg.speaker !== lastRenderedSpeaker) {
-                html += `<span class="speaker-label">说话者 ${seg.speaker}：</span> `;
-                lastRenderedSpeaker = seg.speaker;
+            const speakerLabel = this._speakerLabel(seg);
+            if (speakerLabel && speakerLabel !== lastRenderedSpeaker) {
+                html += `<span class="speaker-label">${this._esc(speakerLabel)}：</span> `;
+                lastRenderedSpeaker = speakerLabel;
             }
 
             // Language badge
@@ -435,13 +462,15 @@ export class TranscriptUI {
                 html += `<div class="seg-block">`;
                 html += `<div class="seg-translated${confidenceClass}">${this._esc(seg.translation)}</div>`;
                 html += `</div>`;
+            } else if (seg.status === 'provisional' && seg.translation) {
+                html += `<div class="seg-block"><div class="seg-provisional">${this._esc(seg.translation)}</div></div>`;
             }
             // Skip 'original' segments in single mode — wait for translation
         }
 
         if (this.provisionalText) {
             if (this.provisionalSpeaker && this.provisionalSpeaker !== lastRenderedSpeaker) {
-                html += `<span class="speaker-label">说话者 ${this.provisionalSpeaker}：</span> `;
+                html += `<span class="speaker-label">说话者 ${this._esc(String(this.provisionalSpeaker))}：</span> `;
             }
             if (this.provisionalLanguage && this.provisionalLanguage !== lastRenderedLang) {
                 html += `<span class="lang-badge">${this._langEmoji(this.provisionalLanguage)}</span> `;
@@ -480,9 +509,10 @@ export class TranscriptUI {
 
         for (const seg of this.segments) {
             let speakerHtml = '';
-            if (seg.speaker && seg.speaker !== lastSpeaker) {
-                speakerHtml = `<div class="speaker-label">说话者 ${seg.speaker}：</div>`;
-                lastSpeaker = seg.speaker;
+            const speakerLabel = this._speakerLabel(seg);
+            if (speakerLabel && speakerLabel !== lastSpeaker) {
+                speakerHtml = `<div class="speaker-label">${this._esc(speakerLabel)}：</div>`;
+                lastSpeaker = speakerLabel;
             }
 
             let langHtml = '';
@@ -497,6 +527,10 @@ export class TranscriptUI {
                 srcHtml += `<div class="seg-text">${this._esc(seg.original || '')}</div>`;
                 tgtHtml += speakerHtml ? '<div class="speaker-label">&nbsp;</div>' : '';
                 tgtHtml += `<div class="seg-text${confidenceClass}">${this._esc(seg.translation)}</div>`;
+            } else if (seg.status === 'provisional') {
+                srcHtml += speakerHtml + langHtml + `<div class="seg-text pending">${this._esc(seg.original || '…')}</div>`;
+                tgtHtml += (speakerHtml ? '<div class="speaker-label">&nbsp;</div>' : '')
+                    + `<div class="seg-text pending">${this._esc(seg.translation || '…')}</div>`;
             } else if (seg.status === 'original' && seg.original) {
                 srcHtml += speakerHtml + langHtml;
                 srcHtml += `<div class="seg-text pending">${this._esc(seg.original)}</div>`;
@@ -511,7 +545,7 @@ export class TranscriptUI {
         // Use explicit provider flag — checking !!sourceProvisionalText fails when
         // whisper lags behind translation, dumping target deltas into the source panel.
         if (this.sourceProvisionalText || this.provisionalText) {
-            const usingOpenAi = this.provider === 'openai';
+            const usingOpenAi = this.provider === 'openai' || this.provider === 'qwen';
             const srcText = usingOpenAi ? this.sourceProvisionalText : this.provisionalText;
             const tgtText = usingOpenAi ? this.provisionalText : '';
             if (srcText) srcHtml += `<div class="seg-text pending">${this._esc(srcText)}</div>`;

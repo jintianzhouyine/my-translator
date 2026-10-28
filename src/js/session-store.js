@@ -94,6 +94,21 @@ export class SessionStore {
         this._scheduleAutosave();
     }
 
+    upsertSegment(id, src, tgt, { direction, sourceLanguage, targetLanguage } = {}) {
+        let segment = this._allChunks().flatMap((chunk) => chunk.segments).find((entry) => entry.id === id);
+        const next = { src: src || '', tgt: tgt || '', direction,
+            source_lang: sourceLanguage, target_lang: targetLanguage };
+        if (segment && Object.keys(next).every((key) => segment[key] === next[key])) return;
+        if (!segment) {
+            if (!this.currentChunk) this.beginChunk();
+            segment = { id, ts: this._timeStr(new Date()) };
+            this.currentChunk.segments.push(segment);
+        }
+        Object.assign(segment, next);
+        this._mutations++;
+        this._scheduleAutosave();
+    }
+
     endChunk() {
         this._cancelAutosave();
         if (!this.currentChunk) return;
@@ -310,6 +325,7 @@ export class SessionStore {
             lines.push(`## 第 ${i + 1} 次录制 — ${startStr} – ${endStr}`);
             lines.push('');
             for (const seg of chunk.segments) {
+                if (seg.direction) lines.push(`**${seg.direction === 'outbound' ? '我 → 对方' : '对方 → 我'}**`);
                 if (seg.src) {
                     lines.push(`[${seg.ts}] ${seg.src}`);
                     lines.push(`→ ${seg.tgt}`);

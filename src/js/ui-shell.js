@@ -8,7 +8,7 @@
  * dispatched from here.
  */
 
-const ACTIVITIES = ['live', 'read', 'library'];
+const ACTIVITIES = ['live', 'audio-file', 'read', 'library'];
 
 let currentActivity = 'live';
 

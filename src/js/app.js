@@ -18,6 +18,11 @@ import { Reader } from './reader.js';
 import { updater } from './updater.js';
 import { sessionStore } from './session-store.js';
 import { QWEN_LANGS } from './qwen-langs.js';
+import { QwenSettingsUI } from './qwen-settings.js';
+import { validateQwenCall } from './qwen-call.js';
+import { AudioFileTranslation, exportAudioFileText } from './audio-file-translation.js';
+import { AudioFileUI } from './audio-file-ui.js';
+import { createNativeAudioSource } from './audio-file-native.js';
 import { languageName, genderName, voiceDisplayName } from './locale.js';
 import {
     initShell, setActivity, getActivity, setLiveBadge, bindMenu, initWindowModes,
@@ -39,8 +44,9 @@ class App {
     constructor() {
         this.isRunning = false;
         this.isStarting = false; // Guard against re-entry
+        this._startGeneration = 0;
         this.currentSource = 'system'; // 'system' | 'microphone' | 'both'
-        this.translationMode = 'soniox'; // 'soniox' | 'local'
+        this.translationMode = 'soniox';
         this.transcriptUI = null;
         this.appWindow = getCurrentWindow();
         this.localPipelineChannel = null;
@@ -76,6 +82,11 @@ class App {
         // Check platform — hide Local MLX on non-Apple-Silicon
         await this._checkPlatformSupport();
 
+        this.qwenSettingsUI = new QwenSettingsUI({ invoke,
+            onError: (message) => this._showToast(String(message), 'error') });
+        this.qwenSettingsUI.init();
+        this.qwenSettingsUI.apply(initSettings);
+
         // Apply saved settings to UI
         this._applySettings(settingsManager.get());
 
@@ -99,6 +110,7 @@ class App {
         this._readMode = 'live';
         this._reader = null;
         this._initReadMode();
+        this._initAudioFileTranslation();
 
         // Wire TTS audio callbacks for every provider (single source of registration
         // so a new provider can never be silently left unwired).
@@ -122,6 +134,9 @@ class App {
         // Check for updates (non-blocking)
         this._initAboutTab();
         this._checkForUpdates();
+
+        // Restore the saved engine on the home screen before the first Settings visit.
+        this._updateModeUI(settingsManager.get().translation_mode || 'soniox');
 
         // Show engine picker on first launch
         this._maybeShowEnginePicker();
@@ -277,7 +292,8 @@ class App {
 
         // Start/Stop button
         document.getElementById('btn-start').addEventListener('click', async () => {
-            if (this.isStarting) return; // Prevent re-entry
+            if (this.isStarting && this.translationMode !== 'qwen') return;
+            if (this._pausePromise) return;
             try {
                 if (this.isRunning) {
                     await this.stopSession();
@@ -302,7 +318,7 @@ class App {
         // Only reachable while running (disabled otherwise); next Start appends a
         // new chunk to the same file rather than starting a fresh one.
         document.getElementById('btn-pause')?.addEventListener('click', async () => {
-            if (this.isStarting || !this.isRunning) return;
+            if ((this.isStarting && this.translationMode !== 'qwen') || !this.isRunning) return;
             try {
                 await this.pause();
             } catch (err) {
@@ -367,6 +383,14 @@ class App {
         document.getElementById('btn-toggle-openai-key')?.addEventListener('click', () => {
             const input = document.getElementById('input-openai-key');
             if (input) input.type = input.type === 'password' ? 'text' : 'password';
+        });
+        document.getElementById('btn-toggle-qwen-key')?.addEventListener('click', () => {
+            const input = document.getElementById('input-qwen-key');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        });
+        document.getElementById('link-qwen')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            window.__TAURI__.opener.openUrl('https://bailian.console.aliyun.com/');
         });
 
         document.getElementById('link-openai')?.addEventListener('click', (e) => {
@@ -625,8 +649,9 @@ class App {
 
             // Cmd/Ctrl + Enter: Start/Stop
             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                if (getActivity() !== 'live') return;
                 e.preventDefault();
-                if (this.isStarting) return;
+                if ((this.isStarting && this.translationMode !== 'qwen') || this._pausePromise) return;
                 (async () => {
                     try {
                         if (this.isRunning) {
@@ -722,6 +747,8 @@ class App {
     // ─── Views ──────────────────────────────────────────────
 
     _showView(view) {
+        if (view === 'settings') this.audioFileUI?.onLeave();
+        if (view !== 'settings') this.qwenSettingsUI?.glossaryImporter?.reset();
         document.getElementById('overlay-view').classList.toggle('active', view === 'overlay');
         document.getElementById('settings-view').classList.toggle('active', view === 'settings');
 
@@ -756,12 +783,15 @@ class App {
         const hasKey = mode === 'local' || !!(s[keyField[mode]] || '').trim();
         const subT = document.getElementById('card-translation-sub');
         if (subT) {
+            const languages = mode === 'qwen'
+                ? `${languageName(s.qwen_my_language || 'zh')} ${s.qwen_duplex_enabled !== false ? '↔' : '字幕'} ${s.qwen_duplex_enabled !== false ? languageName(s.qwen_peer_language || 'en') : ''}`
+                : `${languageName(s.source_language)} → ${languageName(s.target_language || 'vi')}`;
             subT.textContent =
-                `${engineNames[mode] || mode} · ${languageName(s.source_language)} → ${languageName(s.target_language || 'vi')}` +
+                `${engineNames[mode] || mode} · ${languages}` +
                 (hasKey ? '' : ' · ⚠️ 尚未填写 API 密钥');
         }
 
-        // TTS card: cloud-realtime engines run text-only — reflect on the card, never hide.
+        // The cloud speech engines have their own output controls.
         const isCloudRealtime = mode === 'openai' || mode === 'qwen';
         const provNames = {
             edge: 'Edge TTS', microsoft: 'Microsoft v2', 'google-free': 'Google TTS 免费版',
@@ -771,7 +801,11 @@ class App {
         const subTts = document.getElementById('card-tts-sub');
         if (cardTts) cardTts.classList.toggle('disabled', isCloudRealtime);
         if (subTts) {
-            if (isCloudRealtime) {
+            if (mode === 'qwen') {
+                subTts.textContent = s.qwen_duplex_enabled !== false
+                    ? 'Qwen 直接生成译音 · 在翻译设置中选择输出设备'
+                    : '当前仅显示对方字幕 · 可在翻译设置中开启双向通话';
+            } else if (isCloudRealtime) {
                 subTts.textContent = `不可用 — ${engineNames[mode]} 当前仅输出字幕`;
             } else {
                 const prov = s.tts_provider || 'edge';
@@ -785,6 +819,7 @@ class App {
 
     _populateSettingsForm() {
         const s = settingsManager.get();
+        this.qwenSettingsUI?.apply(s);
 
         document.getElementById('input-api-key').value = s.soniox_api_key || '';
         const openaiKeyInput = document.getElementById('input-openai-key');
@@ -944,6 +979,13 @@ class App {
             custom_context: null,
         };
 
+        try {
+            Object.assign(settings, this.qwenSettingsUI.read({ validateConnection: settings.translation_mode === 'qwen' }));
+        } catch (error) {
+            this._showToast(String(error.message || error), 'error');
+            return;
+        }
+
         // Parse custom context (rich format)
         // General key-value pairs
         const generalPairs = [];
@@ -999,6 +1041,7 @@ class App {
         settings.tts_enabled = false;
 
         try {
+            if (this.isRunning || this.qwenCall?.run) await this.pause();
             await settingsManager.save(settings);
             this._showToast('设置已保存', 'success');
             this._showView('overlay');
@@ -1017,7 +1060,11 @@ class App {
         // Live status row: language pair display
         const langEl = document.getElementById('live-lang');
         if (langEl) {
-            langEl.textContent = `${languageName(settings.source_language)} → ${languageName(settings.target_language || 'vi')}`;
+            langEl.textContent = settings.translation_mode === 'qwen'
+                ? (settings.qwen_duplex_enabled !== false
+                    ? `${languageName(settings.qwen_my_language || 'zh')} ↔ ${languageName(settings.qwen_peer_language || 'en')}`
+                    : `对方声音 → ${languageName(settings.qwen_my_language || 'zh')}字幕`)
+                : `${languageName(settings.source_language)} → ${languageName(settings.target_language || 'vi')}`;
         }
 
         // Note: saving settings turns TTS narration off (see end of this method), so the
@@ -1052,6 +1099,7 @@ class App {
 
     async _toggleTTS() {
         const settings = settingsManager.get();
+        if (settings.translation_mode === 'qwen' || settings.translation_mode === 'openai') return;
         const provider = settings.tts_provider || 'edge';
 
         // Block TTS in two-way mode to prevent audio feedback loop
@@ -1602,9 +1650,76 @@ class App {
     /** Side effects when the activity switcher changes space. Panel visibility
      *  itself is owned by ui-shell; this handles pause/drain/render concerns. */
     _onActivityChanged({ activity, previous }) {
+        if (previous === 'audio-file') this.audioFileUI?.onLeave();
+        if (activity === 'audio-file' && (this.isRunning || this.isStarting)) {
+            void this.pause().catch(error => this._showToast(String(error), 'error'));
+        }
         if (previous === 'read' && activity !== 'read') this._exitReadMode();
         if (activity === 'read') this._enterReadMode();
         if (activity === 'library') this._showSessions();
+    }
+
+    _initAudioFileTranslation() {
+        this.audioFileTranslation = new AudioFileTranslation({
+            openSource: window.__TAURI__.core.convertFileSrc ? createNativeAudioSource(window.__TAURI__.core) : undefined,
+            onChange: snapshot => this.audioFileUI?.setSnapshot(snapshot),
+        });
+        const begin = async callback => {
+            if (this._isStartingAudioFile) return;
+            this._isStartingAudioFile = true;
+            const generation = this._audioFileStartGeneration = (this._audioFileStartGeneration || 0) + 1;
+            try {
+                this.audioFileUI.onLeave();
+                if (this.isRunning || this.isStarting || this._pausePromise) await this.pause();
+                if (generation !== this._audioFileStartGeneration) {
+                    this.audioFileUI.setSnapshot({ ...this.audioFileTranslation.snapshot, message: '已取消启动，音频未上传。' });
+                    return;
+                }
+                this._stopRead();
+                await callback();
+            } finally { this._isStartingAudioFile = false; }
+        };
+        this.audioFileUI = new AudioFileUI({
+            document, getSettings: () => settingsManager.get(),
+            onBeforePlayback: async () => {
+                if (this.isRunning || this.isStarting || this._pausePromise) await this.pause();
+                this._stopRead();
+            },
+            onChoose: file => this.audioFileTranslation.choose(file),
+            onPickSource: window.__TAURI__.core.convertFileSrc ? () => this.audioFileTranslation.chooseNative() : undefined,
+            onChooseFiles: files => this.audioFileTranslation.chooseFiles(files),
+            onSplit: options => this.audioFileTranslation.split(options),
+            onResolvePlayback: segment => this.audioFileTranslation.resolvePlayback(segment),
+            onStart: options => begin(() => this.audioFileTranslation.start(settingsManager.get(), options)),
+            onRetryPart: id => this.audioFileTranslation.busy ? this.audioFileTranslation.retryPart(id)
+                : begin(() => this.audioFileTranslation.retryPart(id, settingsManager.get())),
+            onRetryFailed: () => begin(() => this.audioFileTranslation.retryFailed(settingsManager.get())),
+            onSkipPart: id => this.audioFileTranslation.skipPart(id),
+            onCancel: () => {
+                this._audioFileStartGeneration = (this._audioFileStartGeneration || 0) + 1;
+                if (this._isStartingAudioFile && !this.audioFileTranslation.busy) {
+                    this.audioFileUI.setSnapshot({ ...this.audioFileTranslation.snapshot, state: 'finishing', message: '正在取消启动…' });
+                }
+                return this.audioFileTranslation.cancel();
+            },
+            onExport: async options => {
+                const snapshot = this.audioFileTranslation.snapshot;
+                const content = exportAudioFileText(snapshot.segments, options);
+                const partial = snapshot.state !== 'completed' ? '-部分结果' : '';
+                const fileName = snapshot.fileName.replace(/\.[^.]+$/, '') + partial + '.audio';
+                const path = await invoke('export_audio_file_text', { fileName, format: options.format, content });
+                if (path) this._showToast(`已保存字幕／文字：${path}`, 'success');
+            },
+            onOpenSettings: () => {
+                this._showView('settings');
+                document.getElementById('select-translation-mode').value = 'qwen';
+                this._updateModeUI('qwen');
+                this._showSettingsScreen('tab-translation');
+            },
+            onError: error => this._showToast(String(error?.message || error), 'error'),
+        });
+        this.audioFileUI.init();
+        this.audioFileUI.setSnapshot(this.audioFileTranslation.snapshot);
     }
 
     async _enterReadMode() {
@@ -1832,6 +1947,11 @@ class App {
     // ─── Source Control ────────────────────────────────────
 
     _setSource(source) {
+        const mode = this.isRunning ? this.translationMode : settingsManager.get().translation_mode;
+        if (mode === 'qwen') {
+            this._showToast('Qwen 的双方音频设备在「设置 → 翻译」中分别配置。', 'success');
+            return;
+        }
         const wasRunning = this.isRunning;
         const labels = { system: '系统声音', microphone: '麦克风', both: '系统声音与麦克风' };
         const label = labels[source] || source;
@@ -1870,6 +1990,7 @@ class App {
     }
 
     _selectEngineClass(klass) {
+        if (this._engineSwitchPromise || this.isRunning || this.isStarting || this._pausePromise) return;
         const settings = settingsManager.get();
         const currentMode = settings.translation_mode || 'soniox';
         let nextMode = currentMode;
@@ -1884,10 +2005,27 @@ class App {
                 ? currentMode : 'soniox';
         }
 
-        settingsManager.save({ translation_mode: nextMode });
-        const select = document.getElementById('select-translation-mode');
-        if (select) select.value = nextMode;
-        this._updateModeUI(nextMode);
+        this._setEnginePillLocked(true);
+        const switching = settingsManager.save({ translation_mode: nextMode })
+            .then(() => {
+                const select = document.getElementById('select-translation-mode');
+                if (select) select.value = nextMode;
+                this._updateModeUI(nextMode);
+                return true;
+            })
+            .catch(error => {
+                this._updateModeUI(currentMode);
+                this._showToast(`无法保存引擎设置：${error.message || error}`, 'error');
+                return false;
+            });
+        this._engineSwitchPromise = switching;
+        this._updateStartButton();
+        void switching.finally(() => {
+            if (this._engineSwitchPromise === switching) this._engineSwitchPromise = null;
+            this._setEnginePillLocked(this.isRunning || !!this._pausePromise);
+            this._updateStartButton();
+        });
+        return switching;
     }
 
     _updatePillState(mode) {
@@ -1929,9 +2067,7 @@ class App {
         const isLocal = mode === 'local';
         const isOpenAi = mode === 'openai';
         const isQwen = mode === 'qwen';
-        // Cloud-realtime engines that share the OpenAI-style audio toggle,
-        // mic-only capture, and dual-panel routing. Used in place of bare
-        // `isOpenAi` checks below so Qwen inherits the same UI shape.
+        // Both cloud speech engines manage synthesis within their own sessions.
         const isCloudRealtime = isOpenAi || isQwen;
         this._updatePillState(mode);
 
@@ -1946,7 +2082,7 @@ class App {
             soniox: '云端 · 70 多种语言 · 约 0.12 美元／小时',
             local: '离线 · 免费 · 约 3–4 秒延迟',
             openai: '云端 · 13 种语言 · 仅字幕',
-            qwen: '云端 · 60 多种语言 · 仅字幕 · 免费预览 · 需指定源语言',
+            qwen: 'Qwen3.8 · 对方字幕与我的译音 · 支持术语词典',
         };
         if (hintSoniox) {
             hintSoniox.textContent = ENGINE_HINTS[mode] || '';
@@ -1988,6 +2124,11 @@ class App {
         if (sectionApiKey) sectionApiKey.style.display = isSoniox ? '' : 'none';
         if (sectionOpenAiKey) sectionOpenAiKey.style.display = isOpenAi ? '' : 'none';
         if (sectionQwenKey) sectionQwenKey.style.display = isQwen ? '' : 'none';
+        this.qwenSettingsUI?.setVisible(isQwen);
+        for (const id of ['section-languages', 'section-audio-source', 'select-audio-source']) {
+            const element = document.getElementById(id);
+            if (element) element.style.display = isQwen ? 'none' : '';
+        }
 
         // Soniox-only features: Custom context, Strict language detection,
         // Endpoint delay. The realtime engines manage these internally.
@@ -1998,10 +2139,9 @@ class App {
         const sectionEndpointDelay = document.getElementById('section-endpoint-delay');
         if (sectionEndpointDelay) sectionEndpointDelay.style.display = isSoniox ? '' : 'none';
 
-        // Two-way mode incompatible with realtime translation engines — force
-        // one-way + disable the option for any cloud-realtime mode.
+        // Qwen has dedicated direction settings. This picker is for the legacy engines.
         const typeSelect = document.getElementById('select-translation-type');
-        if (typeSelect) {
+        if (typeSelect && !isQwen) {
             const twoWayOpt = typeSelect.querySelector('option[value="two_way"]');
             if (twoWayOpt) twoWayOpt.disabled = isCloudRealtime;
             if (isCloudRealtime && typeSelect.value === 'two_way') {
@@ -2010,8 +2150,7 @@ class App {
             }
         }
 
-        // Custom TTS toggle: cloud realtime engines run text-only to prevent
-        // the speaker → mic feedback loop on shared devices.
+        // Qwen routes its own generated speech; the separate TTS toggle is unused.
         const ttsCheck = document.getElementById('check-tts-enabled');
         if (ttsCheck) {
             ttsCheck.disabled = isCloudRealtime;
@@ -2032,12 +2171,11 @@ class App {
         const btnOpenAiAudio = document.getElementById('btn-openai-audio');
         if (btnOpenAiAudio) btnOpenAiAudio.style.display = 'none';
 
-        // Restrict target language list to 13 OpenAI-supported in openai mode.
-        // Qwen LiveTranslate Flash has its own 60-language list (mirrors mobile
-        // v0.4.3); Qwen also hides Auto on the source picker because the model
-        // rejects "auto" on real mic input.
-        this._refreshTargetLangList(mode);
-        this._refreshSourceLangList(mode);
+        // The Qwen-specific language controls live in QwenSettingsUI.
+        if (!isQwen) {
+            this._refreshTargetLangList(mode);
+            this._refreshSourceLangList(mode);
+        }
     }
 
     _refreshTargetLangList(mode) {
@@ -2074,12 +2212,10 @@ class App {
         if (mode === 'qwen') {
             if (!this._fullSourceLangHTML) this._fullSourceLangHTML = select.innerHTML;
             const langs = QWEN_LANGS;
-            // No "Auto" — Live Flash stalls after one segment on real mic when
-            // source isn't explicit (verified iPhone v0.4.2, 2026-05-25).
-            select.innerHTML = langs
+            select.innerHTML = '<option value="auto">自动检测</option>' + langs
                 .map((l) => `<option value="${l.code}">${l.name}</option>`).join('');
-            const validCurrent = langs.some((l) => l.code === current) && current !== 'auto';
-            select.value = validCurrent ? current : 'en';
+            const validCurrent = current === 'auto' || langs.some((l) => l.code === current);
+            select.value = validCurrent ? current : 'auto';
         } else if (this._fullSourceLangHTML) {
             select.innerHTML = this._fullSourceLangHTML;
             select.value = current || 'auto';
@@ -2201,9 +2337,18 @@ class App {
     // ─── Start/Stop ────────────────────────────────────────
 
     async start() {
+        if (this.audioFileTranslation?.busy || this._isStartingAudioFile) {
+            this._showToast('音频文件正在处理中，请完成或取消后再开始实时翻译。', 'error');
+            return;
+        }
+        this.audioFileUI?.onLeave();
+        if (this._engineSwitchPromise && await this._engineSwitchPromise === false) return;
+        if (this._pausePromise) await this._pausePromise;
+        if (this.isRunning) return;
+        const startGeneration = ++this._startGeneration;
         const settings = settingsManager.get();
         this.translationMode = settings.translation_mode || 'soniox';
-        console.log('[App] start() called, translation_mode:', this.translationMode, 'settings:', JSON.stringify(settings));
+        console.log('[App] Starting engine:', this.translationMode);
 
         // Local MLX needs macOS Apple Silicon — block here (option is selectable
         // but can't actually run on other platforms) instead of crashing.
@@ -2233,6 +2378,16 @@ class App {
             this._showView('settings');
             return;
         }
+        if (this.translationMode === 'qwen') {
+            try {
+                validateQwenCall(settings);
+            } catch (error) {
+                this._showToast(error.message, 'error');
+                this._showView('settings');
+                this._showSettingsScreen('tab-translation');
+                return;
+            }
+        }
 
         // Check ElevenLabs key only if TTS is enabled AND provider is elevenlabs
         if (this.ttsEnabled && settings.tts_provider === 'elevenlabs' && !settings.elevenlabs_api_key) {
@@ -2248,11 +2403,15 @@ class App {
         if (!this.recordingStartTime) this.recordingStartTime = Date.now();
 
         // Record session metadata for auto-save
-        if (!this.sessionStartTime) {
-            this.sessionStartTime = new Date();
+        {
+            if (!this.sessionStartTime) this.sessionStartTime = new Date();
             const translationType = settings.translation_type || 'one_way';
             this.sessionMode = translationType;
-            if (translationType === 'two_way') {
+            if (this.translationMode === 'qwen') {
+                this.sessionMode = settings.qwen_duplex_enabled !== false ? 'two_way' : 'one_way';
+                this.sessionSourceLang = settings.qwen_peer_language || 'en';
+                this.sessionTargetLang = settings.qwen_my_language || 'zh';
+            } else if (translationType === 'two_way') {
                 this.sessionSourceLang = settings.language_a || 'ja';
                 this.sessionTargetLang = settings.language_b || 'vi';
             } else {
@@ -2282,7 +2441,7 @@ class App {
         } else if (this.translationMode === 'openai') {
             await this._startOpenAiMode(settings);
         } else if (this.translationMode === 'qwen') {
-            await this._startQwenMode(settings);
+            await this._startQwenMode(settings, startGeneration);
         } else {
             await this._startSonioxMode(settings);
         }
@@ -2381,84 +2540,43 @@ class App {
         }
     }
 
-    async _startQwenMode(settings) {
-        this._updateStatus('connecting');
-        const { QwenRealtimeClient } = await import('./qwen-realtime-client.js');
-
-        // Live Flash is translation-only (no source transcript). Force the
-        // single-panel translation view; dual-panel would render an empty
-        // source column.
+    async _startQwenMode(settings, startGeneration) {
+        const [{ QwenRealtimeClient }, { QwenCallController }] = await Promise.all([
+            import('./qwen-realtime-client.js'), import('./qwen-call.js'),
+        ]);
+        if (startGeneration !== this._startGeneration || !this.isRunning) return;
         this.transcriptUI.provider = 'qwen';
-
-        this.qwenClient = new QwenRealtimeClient();
-
-        this.qwenClient.onStatusChange = (state) => {
-            if (state === 'ready') this._updateStatus('connected');
-            else if (state === 'connecting') this._updateStatus('connecting');
-        };
-        this.qwenClient.onProvisional = (text) => {
-            this.transcriptUI.setProvisional(text, null, null);
-        };
-        this.qwenClient.onSegment = (sourceText, translatedText) => {
-            this.transcriptUI.addTranslation(translatedText);
-            sessionStore.addSegment('', translatedText || '');
-            this.transcriptUI.clearProvisional();
-        };
-        this.qwenClient.onError = (code, msg) => {
-            console.error('[Qwen Realtime]', code, msg);
-            this._showToast(`翻译错误（${code}）：${msg}`, 'error');
+        // One controller owns capture, two translation connections and the selected output.
+        const call = new QwenCallController({
+            invoke, Channel, createClient: () => new QwenRealtimeClient(),
+            onStateChange: (state) => this._updateStatus(state),
+            onProvisional: (direction, text, meta) => {
+                this.transcriptUI.upsertQwenSegment({
+                    id: meta.id, original: meta.sourceText || '', translation: text,
+                    direction, speaker: meta.speakerId, language: meta.sourceLanguage,
+                });
+            },
+            onSegment: (direction, original, translation, meta) => {
+                this.transcriptUI.upsertQwenSegment({
+                    id: meta.id, original, translation, direction, isFinal: true,
+                    speaker: meta.speakerId, language: meta.sourceLanguage,
+                });
+                sessionStore.upsertSegment(meta.id, original, translation, meta);
+            },
+            onError: (direction, message) => {
+                const label = direction === 'outbound' ? '我的译音' : '对方字幕';
+                this._showToast(`${label}：${message}`, 'error');
+                void this.pause().then(() => this._updateStatus('error'));
+            },
+        });
+        this.qwenCall = call;
+        try {
+            await call.start(settings);
+        } catch (error) {
+            if (startGeneration !== this._startGeneration) return;
+            this._showToast(`Qwen 启动失败：${error.message || error}`, 'error');
+            await this.pause();
             this._updateStatus('error');
-        };
-        this.qwenClient.onClosed = (reason) => {
-            console.warn('[Qwen Realtime] closed:', reason);
-            if (this.isRunning) {
-                this._showToast('Qwen 连接已断开，正在重连…', 'success');
-                setTimeout(() => {
-                    if (this.isRunning) this._startQwenMode(settingsManager.get());
-                }, 1000);
-            }
-        };
-
-        try {
-            // Live Flash rejects "auto" — fall back to English. UI also
-            // strips the "auto" option when engine = qwen (see
-            // _refreshSourceLangList), so this is belt-and-suspenders.
-            const sourceLang =
-                settings.source_language && settings.source_language !== 'auto'
-                    ? settings.source_language
-                    : 'en';
-            await this.qwenClient.connect({
-                apiKey: settings.qwen_api_key,
-                sourceLanguage: sourceLang,
-                targetLanguage: settings.target_language,
-            });
-        } catch (err) {
-            this._showToast(`Qwen 连接失败：${err}`, 'error');
-            await this.pause();
-            return;
-        }
-
-        try {
-            let audioBatchCount = 0;
-            const channel = new window.__TAURI__.core.Channel();
-            channel.onmessage = (pcmData) => {
-                audioBatchCount++;
-                if (audioBatchCount <= 3 || audioBatchCount % 50 === 0) {
-                    console.log(`[Qwen capture] batch #${audioBatchCount}, size:`, pcmData?.length || 0);
-                }
-                const bytes = new Uint8Array(pcmData);
-                this.qwenClient.sendAudio(bytes.buffer);
-            };
-            console.log('[Qwen] Starting audio capture, source:', this.currentSource);
-            await invoke('start_capture', {
-                source: this.currentSource,
-                channel,
-            });
-            console.log('[Qwen] start_capture invoked OK');
-        } catch (err) {
-            console.error('Failed to start audio capture:', err);
-            this._showToast(`音频错误：${err}`, 'error');
-            await this.pause();
         }
     }
 
@@ -2774,16 +2892,32 @@ class App {
     // Pause: stop capture and persist the current chunk, but keep the session
     // file open. The next Start appends a new chunk to the same file. Finalizing
     // into a new file is stopSession()'s job.
-    async pause() {
+    pause() {
+        if (this._pausePromise) return this._pausePromise;
+        this._isPausing = true;
+        const pausing = this._pause();
+        this._pausePromise = pausing;
+        return pausing.finally(() => {
+            if (this._pausePromise === pausing) this._pausePromise = null;
+            this._isPausing = false;
+            this._setEnginePillLocked(this.isRunning || !!this._engineSwitchPromise);
+            this._updateStartButton();
+        });
+    }
+
+    async _pause() {
+        ++this._startGeneration;
         this.isRunning = false;
         this._updateStartButton();
-        this._setEnginePillLocked(false);
+        this._setEnginePillLocked(true);
 
-        // Stop audio capture
-        try {
-            await invoke('stop_capture');
-        } catch (err) {
-            console.error('Failed to stop audio capture:', err);
+        // Qwen owns its stop marker and capture-tail drain, so stop through its controller.
+        if (this.translationMode !== 'qwen') {
+            try {
+                await invoke('stop_capture');
+            } catch (err) {
+                console.error('Failed to stop audio capture:', err);
+            }
         }
 
         if (this.translationMode === 'local') {
@@ -2807,11 +2941,7 @@ class App {
             }
             this._updateStatus('disconnected');
         } else if (this.translationMode === 'qwen') {
-            if (this.qwenClient) {
-                try { await this.qwenClient.disconnect(); } catch {}
-                this.qwenClient = null;
-            }
-            try { await invoke('stop_capture'); } catch {}
+            if (this.qwenCall) await this.qwenCall.stop();
             this._updateStatus('disconnected');
         } else {
             // Disconnect Soniox
@@ -2881,25 +3011,25 @@ class App {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Persist the session on the way out. endSession() first (cheap local write
-    // that finalizes the file), then best-effort engine teardown via pause().
-    // Both are idempotent, so running this more than once is harmless.
+    // Save a snapshot first, then drain the provider before finalizing the file.
     async _flushOnExit() {
-        try { await sessionStore.endSession(); } catch (e) { console.error('[App] exit flush (endSession) failed:', e); }
+        this._audioFileStartGeneration = (this._audioFileStartGeneration || 0) + 1;
+        try { await this.audioFileTranslation?.dispose(); } catch (e) { console.error('[App] audio file cleanup failed:', e); }
+        try { await sessionStore.persist(); } catch (e) { console.error('[App] exit snapshot failed:', e); }
         try { await this.pause(); } catch (e) { console.error('[App] exit flush (pause) failed:', e); }
+        try { await sessionStore.endSession(); } catch (e) { console.error('[App] exit flush (endSession) failed:', e); }
     }
 
     // Two close routes, one flush:
     //  • window ✕ / appWindow.close() → onCloseRequested (frontend)
     //  • Cmd+Q / Dock quit → Rust RunEvent::ExitRequested emits 'app-exit-requested'
-    // Both flush (raced against a 3s deadline so a hung engine can't wedge the
-    // app) then exit_app, which force-exits the process cleanly in Rust.
+    // Qwen needs time for session.finish to drain. A deadline still bounds hung shutdowns.
     async _bindCloseHooks() {
         await this.appWindow.onCloseRequested(async (event) => {
             if (this._closing) return;
             this._closing = true;
             event.preventDefault();
-            await Promise.race([this._flushOnExit(), this._sleep(3000)]);
+            await Promise.race([this._flushOnExit(), this._sleep(this.translationMode === 'qwen' ? 26000 : 3000)]);
             try {
                 await invoke('exit_app');
             } catch {
@@ -2910,7 +3040,7 @@ class App {
         await this.appWindow.listen('app-exit-requested', async () => {
             if (this._closing) return;
             this._closing = true;
-            await Promise.race([this._flushOnExit(), this._sleep(3000)]);
+            await Promise.race([this._flushOnExit(), this._sleep(this.translationMode === 'qwen' ? 26000 : 3000)]);
             try { await invoke('exit_app'); } catch {}
         });
     }
@@ -2921,10 +3051,11 @@ class App {
         const iconStop = document.getElementById('icon-stop');
 
         btn.classList.toggle('recording', this.isRunning);
+        btn.disabled = !!this._isPausing || !!this._engineSwitchPromise;
         iconPlay.style.display = this.isRunning ? 'none' : 'block';
         iconStop.style.display = this.isRunning ? 'block' : 'none';
         const label = document.getElementById('btn-start-label');
-        if (label) label.textContent = this.isRunning ? '停止' : '开始';
+        if (label) label.textContent = this._isPausing ? '正在结束…' : this.isRunning ? '停止' : '开始';
 
         // Pause is only actionable while running. (Don't also gate on isStarting:
         // start() calls this while isStarting is still true, and the click handler

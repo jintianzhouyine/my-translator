@@ -1,9 +1,10 @@
 use crate::audio::microphone::MicCapture;
+use crate::audio::routed::RoutedAudioState;
 use crate::audio::SystemAudioCapture;
 use serde::Serialize;
 use std::sync::mpsc;
 use std::sync::Mutex;
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, AppHandle, Manager};
 
 /// State for tracking active audio captures
 pub struct AudioState {
@@ -33,11 +34,28 @@ pub struct PermissionStatus {
 
 /// Start audio capture and forward data to the frontend via IPC channel
 #[tauri::command]
-pub fn start_capture(
+pub async fn start_capture(
     source: String,
     channel: Channel<Vec<u8>>,
-    state: State<'_, AudioState>,
+    app: AppHandle,
 ) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioState>();
+        let routed = app.state::<RoutedAudioState>();
+        start_capture_blocking(source, channel, &state, &routed)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn start_capture_blocking(
+    source: String,
+    channel: Channel<Vec<u8>>,
+    state: &AudioState,
+    routed: &RoutedAudioState,
+) -> Result<(), String> {
+    let _operation = routed.operation.lock().map_err(|e| e.to_string())?;
+    routed.stop_capture();
     // Stop any existing capture first
     stop_capture_inner(&state);
 
@@ -135,12 +153,20 @@ pub fn start_capture(
 
 /// Stop audio capture
 #[tauri::command]
-pub fn stop_capture(state: State<'_, AudioState>) -> Result<(), String> {
-    stop_capture_inner(&state);
-    Ok(())
+pub async fn stop_capture(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AudioState>();
+        let routed = app.state::<RoutedAudioState>();
+        let _operation = routed.operation.lock().map_err(|e| e.to_string())?;
+        routed.stop_capture();
+        stop_capture_inner(&state);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
-fn stop_capture_inner(state: &AudioState) {
+pub(crate) fn stop_capture_inner(state: &AudioState) {
     // Stop the forwarder
     if let Ok(mut active) = state.active_receiver.lock() {
         if let Some(forwarder) = active.take() {
