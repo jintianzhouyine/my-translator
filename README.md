@@ -184,6 +184,14 @@ Requires: Rust (stable), Node.js 18+, macOS 13+ or Windows 10+.
 
 ---
 
+## Development Specifications
+
+This project uses LeanSpec to track feature requirements, design decisions and acceptance checks.
+See [the spec workflow](specs/README.md) and [project instructions](AGENTS.md).
+Run `lean-spec board` from the repository root to view current work.
+
+---
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=phuc-nt%2Fmy-translator&type=date&legend=top-left">
