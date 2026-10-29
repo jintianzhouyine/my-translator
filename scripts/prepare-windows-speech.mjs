@@ -32,7 +32,7 @@ export async function verifyArchive(file, artifact = SPEECH_ARTIFACT) {
 }
 
 // A hard process deadline supplements curl's own connection/transfer limits.
-// No shell is involved, so the process being terminated is curl/tar itself.
+// No shell is involved, so the process being terminated is curl/7-Zip/tar itself.
 export function runCommand(command, args, {
     timeoutMs,
     heartbeatMs = 15000,
@@ -113,6 +113,8 @@ export async function prepareSpeechLibraries({
     log = console.log,
     retryDelayMs = 2000,
     heartbeatMs = 15000,
+    platform = process.platform,
+    sevenZipCommand,
 } = {}) {
     assert.ok(envFile, 'GITHUB_ENV is required to export the speech library path');
     assert.equal(path.basename(artifact.name), artifact.name, 'Artifact name must not contain directories');
@@ -132,7 +134,7 @@ export async function prepareSpeechLibraries({
             await fsp.rm(archive, { force: true });
             log(`Downloading speech libraries (${attempt}/3), ${(artifact.size / 1024 / 1024).toFixed(1)} MiB: ${artifact.url}`);
             try {
-                await run(process.platform === 'win32' ? 'curl.exe' : 'curl', [
+                await run(platform === 'win32' ? 'curl.exe' : 'curl', [
                     '--fail', '--location', '--silent', '--show-error',
                     '--connect-timeout', '30', '--max-time', '300',
                     '--speed-time', '45', '--speed-limit', '1024',
@@ -155,10 +157,30 @@ export async function prepareSpeechLibraries({
             }
         }
 
-        log('Extracting speech libraries (maximum 180s; progress heartbeat every 15s).');
-        await run(process.platform === 'win32' ? 'tar.exe' : 'tar', ['-xjf', archive, '-C', staging], {
-            timeoutMs: 180000, heartbeatMs, label: 'Extracting speech libraries', log,
-        });
+        if (platform === 'win32') {
+            // Git's tar may be ahead of Windows bsdtar on PATH. Use the runner's
+            // known 7-Zip installation and separate bzip2 decompression from tar
+            // extraction, with independent deadlines and visible command output.
+            const installedSevenZip = path.win32.join(process.env.ProgramFiles || 'C:\\Program Files', '7-Zip', '7z.exe');
+            const extractor = sevenZipCommand || (fs.existsSync(installedSevenZip) ? installedSevenZip : '7z.exe');
+            const tarArchive = path.join(staging, 'speech.tar');
+            log(`Windows extraction tool: ${extractor}`);
+            log('Decompressing bzip2 archive with 7-Zip (maximum 180s).');
+            await run(extractor, ['x', archive, `-o${staging}`, '-y', '-bd', '-bb1', '-tbzip2'], {
+                timeoutMs: 180000, heartbeatMs, label: 'Decompressing speech archive (7-Zip)', log,
+            });
+            const tarStat = await fsp.stat(tarArchive);
+            assert.ok(tarStat.isFile() && tarStat.size > 0, '7-Zip did not produce a nonempty speech.tar');
+            log(`Bzip2 decompression finished (${(tarStat.size / 1024 / 1024).toFixed(1)} MiB); extracting tar with 7-Zip (maximum 180s).`);
+            await run(extractor, ['x', tarArchive, `-o${staging}`, '-y', '-bd', '-bb1', '-ttar'], {
+                timeoutMs: 180000, heartbeatMs, label: 'Extracting speech libraries (7-Zip)', log,
+            });
+        } else {
+            log('Extracting speech libraries with tar (maximum 180s).');
+            await run('tar', ['-xjf', archive, '-C', staging], {
+                timeoutMs: 180000, heartbeatMs, label: 'Extracting speech libraries', log,
+            });
+        }
         const extracted = path.join(staging, artifact.name);
         log('Extraction finished; checking required static libraries.');
         const libraries = await libraryManifest(extracted, artifact);

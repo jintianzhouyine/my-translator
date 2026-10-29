@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing version tag to build and publish (e.g. v0.10.2)'
+        description: 'Existing version tag to build and publish (e.g. v0.10.3)'
         required: true
         type: string
 
@@ -27,7 +27,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo 'Expected an existing version tag such as v0.10.2' >&2
+            echo 'Expected an existing version tag such as v0.10.3' >&2
             exit 1
           fi
 
@@ -111,7 +111,7 @@ jobs:
 
       - name: Prepare Windows x64 speech libraries
         if: runner.os == 'Windows'
-        timeout-minutes: 22
+        timeout-minutes: 25
         shell: pwsh
         env:
           SHERPA_ONNX_CACHE_DIR: ${{ runner.tool_cache }}/my-translator/sherpa-onnx/win-x64
