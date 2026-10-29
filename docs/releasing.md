@@ -15,7 +15,7 @@ GitHub Actions 仅接受手动触发，推送代码、推送 tag 或创建 Relea
 
 1. 打开 [Build & Release 工作流](https://github.com/jintianzhouyine/my-translator/actions/workflows/release.yml)。
 2. 点击 **Run workflow**，保留 **Use workflow from: main**。
-3. 在 **Existing version tag to build and publish** 中填写已有 tag，例如 `v0.10.1`。
+3. 在 **Existing version tag to build and publish** 中填写已有 tag，例如 `v0.10.2`。
 4. 再次点击 **Run workflow**。
 
 工作流先校验 tag、应用版本和发布说明，并将 tag 解析为固定的 commit。
@@ -37,5 +37,8 @@ macOS 和 Windows 任务都构建该 commit，而不是构建触发时 main 上�
 - macOS：`macos-14` / `aarch64-apple-darwin`。
 - Windows：`windows-2022` / `x86_64-pc-windows-msvc`。
 - Windows x64 先执行 `scripts/prepare-windows-x64.ps1`，准备官方 sherpa-onnx static-MD 库，与 Rust 默认动态 CRT 匹配。
+- 语音库准备会分别打印下载、校验和解压进度；下载具有连接、低速及总时限，最多尝试三次。
+- 官方压缩包通过大小和 SHA-256 校验后才解压。准备步骤最多运行 22 分钟，失败会明确报告阶段和错误。
+- 校验后的库会单独缓存，后续运行可以复用；缓存服务失败不阻止正常下载准备。
 - 旧 Windows ARM64 安装包保留在历史 Release 中。
 - 测试和二进制检查不能替代真实设备上的安装、云端翻译与音频路由验收。
