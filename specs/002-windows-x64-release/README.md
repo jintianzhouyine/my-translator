@@ -1,12 +1,18 @@
 ---
-status: in-progress
-created: '2026-10-29'
-tags:
-  - release
-  - windows
+status: complete
+created: 2026-10-29
 priority: medium
-created_at: '2026-10-29T02:13:23.503950+00:00'
+tags:
+- release
+- windows
+created_at: 2026-10-29T02:13:23.503950Z
+updated_at: 2026-10-29T02:35:11.364781Z
+completed_at: 2026-10-29T02:35:11.364781Z
+transitions:
+- status: complete
+  at: 2026-10-29T02:35:11.364781Z
 ---
+
 # Windows x64 发布与手动构建
 
 ## Overview
@@ -28,14 +34,14 @@ created_at: '2026-10-29T02:13:23.503950+00:00'
 - [x] 修改 Windows 构建目标与架构检查
 - [x] 实现手动触发、tag 校验及草稿发布流程
 - [x] 更新版本号与相关文档
-- [ ] 提交并推送版本及 tag，创建 Release 草稿
+- [x] 提交并推送版本及 tag，创建 Release 草稿
 
 ## Test
 
 - [x] 架构检查回归测试与应用 JavaScript 测试通过
-- [ ] 工作流语法、版本一致性及 LeanSpec 严格校验通过
-- [ ] 确认远端 tag 与提交一致，Release 为草稿
-- [ ] 确认没有触发新构建
+- [x] 工作流语法、版本一致性及 LeanSpec 严格校验通过
+- [x] 确认远端 tag 与提交一致，Release 为草稿
+- [x] 确认没有触发新构建
 
 ## Notes
 
@@ -43,3 +49,5 @@ created_at: '2026-10-29T02:13:23.503950+00:00'
 本 spec 的完成范围是发布配置与交付准备，不代表新安装包已构建或通过设备验收。
 
 本地验证：221 项 JavaScript 测试通过，其中包含 12 项发布架构与版本回归测试；6 处版本号一致为 0.10.1；工作流 YAML、仅手动触发和构建矩阵检查通过。
+
+交付验证：actionlint 1.7.12 与 10 个 shell 片段语法检查通过。v0.10.1 tag 指向 cf41355，GitHub Release 已创建为草稿，附件为空，未触发新构建。Git 网络超时后使用已有 Git 凭据通过 API 同步，blob/tree/commit 哈希与本地一致。安装包由用户手动运行工作流生成。
