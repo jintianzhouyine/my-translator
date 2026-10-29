@@ -3,7 +3,7 @@
 ## 项目上下文
 
 这是 Tauri 2 桌面翻译应用：前端为原生 HTML/CSS/JavaScript ES modules，后端为 Rust。
-当前发布目标为 macOS Apple Silicon 和 Windows ARM64，界面主要使用中文。
+当前发布目标为 macOS Apple Silicon 和 Windows x64（Intel/AMD 64 位），界面主要使用中文。
 
 - `src/`：界面及客户端会话；`src/js/` 包含 Qwen 双向通话、音频文件翻译和术语导入。
 - `src-tauri/src/`：原生音频采集、输出路由、WebSocket、设置及文件处理命令。
@@ -17,6 +17,7 @@
 - [Qwen 双向通话](docs/qwen-duplex.md)
 - [音频文件翻译](docs/audio-file-translation.md)
 - [v0.10.0 发布说明](docs/releases/v0.10.0.md)
+- [发布操作说明](docs/releasing.md)
 
 ## LeanSpec 工作流
 
@@ -62,8 +63,9 @@ CLI 可直接使用，不依赖 MCP；未配置全局 AI 工具或额外 skill�
 | 发布构建 | `npm run build` |
 
 `npm test` 通过 `scripts/test.mjs` 仅运行应用测试，不要使用裸 `node --test` 扫描 `.opencode/`。
-Windows ARM64 构建前需执行 `scripts/prepare-windows-arm64.ps1`；平台发布步骤以
-[release.yml](.github/workflows/release.yml) 为准。
+Windows x64 使用 `x86_64-pc-windows-msvc`，构建前执行 `scripts/prepare-windows-x64.ps1` 准备匹配动态 CRT 的语音库。
+平台发布步骤以 [release.yml](.github/workflows/release.yml) 为准：仅手动触发，输入已存在的版本 tag，
+两个平台均通过后向 Release 草稿上传安装包并发布。推送 tag 不触发构建。
 
 ## 实现约定
 

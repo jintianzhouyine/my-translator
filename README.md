@@ -17,15 +17,16 @@
 
 ### ⬇️ Which build do I download?
 
-This fork publishes macOS Apple Silicon and Windows ARM64 installers. Grab the matching file from the [latest release](https://github.com/jintianzhouyine/my-translator/releases/latest):
+Starting with v0.10.1, this fork publishes macOS Apple Silicon and Windows x64 installers. Grab the matching file from the [latest release](https://github.com/jintianzhouyine/my-translator/releases/latest):
 
 | Your machine | File |
 |---|---|
 | **Mac Apple Silicon** (M1/M2/M3/M4) | `MyTranslator_<ver>_aarch64.dmg` |
-| **Windows ARM64** | `MyTranslator_<ver>_arm64-setup.exe` |
+| **Windows x64** (64-bit Intel/AMD) | `MyTranslator_<ver>_x64-setup.exe` |
 
 > On a Mac, check  → **About This Mac** → *Chip*: **Apple M-series** → `aarch64`, **Intel** → `x64`. Macs from late 2020 on are almost all Apple Silicon.
 > This fork uses manual downloads from Releases; automatic update packages are not published. `SHA256SUMS` contains installer checksums. See the release notes for setup requirements.
+> Windows ARM64 builds remain available in [v0.10.0](https://github.com/jintianzhouyine/my-translator/releases/tag/v0.10.0). New versions target Windows x64; this is not a 32-bit x86 build.
 
 ---
 
@@ -136,7 +137,7 @@ Import terminology from Excel (`.xlsx`) using the first two columns for source t
 
 The **音频翻译** tab translates local audio files into text and timed subtitles using the saved Qwen configuration. Accelerated mode divides recordings into requests of up to two minutes and runs two requests concurrently, preserving the original timeline; sequential mode is also available. Intermediate translations appear as they arrive. Transient failures retry up to twice, and failed requests can be retried or skipped individually without restarting completed parts. Click a translated segment to play its original audio range, then export translated, original or bilingual SRT/VTT/TXT. Desktop decoding uses locally installed FFmpeg / ffprobe (up to 16 GiB / 24 hours per source). You can adjust split points or import files you have already split if automatic decoding fails; each manually imported file is limited to 100 MiB / 30 minutes and keeps its file boundary. Actual speed depends on network and provider limits. See the [audio file translation guide](docs/audio-file-translation.md).
 
-Supply a Bailian API key, workspace ID and matching Beijing or Singapore region. Duplex uses two billable sessions. Virtual audio drivers must be installed separately and selected in your meeting application; Windows ARM64 requires a compatible driver. See the [Chinese setup and verification guide](docs/qwen-duplex.md). Live provider access and end-to-end calls still require validation with your account and devices.
+Supply a Bailian API key, workspace ID and matching Beijing or Singapore region. Duplex uses two billable sessions. Virtual audio drivers must be installed separately and selected in your meeting application; use a driver compatible with your Windows system architecture. See the [Chinese setup and verification guide](docs/qwen-duplex.md). Live provider access and end-to-end calls still require validation with your account and devices.
 
 ### 🖥️ Local Mode (Apple Silicon only)
 
@@ -189,6 +190,8 @@ Requires: Rust (stable), Node.js 18+, macOS 13+ or Windows 10+.
 This project uses LeanSpec to track feature requirements, design decisions and acceptance checks.
 See [the spec workflow](specs/README.md) and [project instructions](AGENTS.md).
 Run `lean-spec board` from the repository root to view current work.
+
+Releases are built only when manually requested in GitHub Actions. See the [release workflow guide](docs/releasing.md) for selecting a version tag and publishing its installers.
 
 ---
 

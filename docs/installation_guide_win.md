@@ -6,7 +6,7 @@ Step-by-step guide to install and use **My Translator** on Windows 10/11.
 
 ## Requirements
 
-- Windows 10 or later (x64 or ARM64)
+- Windows 10 or later, 64-bit Intel/AMD (x64)
 - **Soniox mode** (recommended): [Soniox](https://soniox.com) API key (pay-per-use, ~$0.12/hour)
 - **OpenAI Realtime mode** (premium): [OpenAI](https://platform.openai.com) API key (~$4/hour — much pricier, but returns native translated voice — no separate TTS needed)
 - **TTS narration** (optional, text engines only): Edge TTS (free, no API key) or premium providers. See [TTS Guide](tts_guide.md)
@@ -15,11 +15,11 @@ Step-by-step guide to install and use **My Translator** on Windows 10/11.
 
 ## Step 1 — Download
 
-Download the latest `.exe` installer from: [**Releases — Windows**](https://github.com/phuc-nt/my-translator/releases/latest)
+Download the latest `.exe` installer from: [**Releases — Windows**](https://github.com/jintianzhouyine/my-translator/releases/latest)
 
-Choose the right version:
-- **x64** — Most Windows PCs (Intel/AMD)  
-- **arm64** — Windows on ARM (Surface Pro X, Snapdragon laptops)
+Starting with v0.10.1, download `MyTranslator_<version>_x64-setup.exe` for 64-bit Intel/AMD PCs.
+This is an x64 application, not a 32-bit x86 build. Older Windows ARM64 installers remain available in
+[v0.10.0](https://github.com/jintianzhouyine/my-translator/releases/tag/v0.10.0).
 
 ---
 

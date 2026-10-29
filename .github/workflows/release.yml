@@ -1,21 +1,63 @@
-name: Build & Release ARM64
+name: Build & Release (macOS ARM64 + Windows x64)
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to build and publish (e.g. v0.10.1)'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.revision.outputs.commit }}
+    steps:
+      - name: Validate tag format
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Expected an existing version tag such as v0.10.1' >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate release version and notes
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          assert.equal(process.env.RELEASE_TAG, `v${manifest.version}`, 'Tag must match package version');
+          fs.accessSync(`docs/releases/${process.env.RELEASE_TAG}.md`);
+          JS
+
+      - name: Pin source revision for all jobs
+        id: revision
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.name }}
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -27,13 +69,15 @@ jobs:
             target: aarch64-apple-darwin
             bundle: dmg
             extension: .dmg
-          - name: Windows ARM64
-            runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
+          - name: Windows x64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
             bundle: nsis
             extension: .exe
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -55,10 +99,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prepare Windows ARM64 speech libraries
+      - name: Prepare Windows x64 speech libraries
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/prepare-windows-arm64.ps1
+        run: ./scripts/prepare-windows-x64.ps1
 
       - name: Test translation sessions and settings
         run: npm test
@@ -70,6 +114,8 @@ jobs:
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
 
       - name: Verify executable architecture and release version
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: node scripts/verify-release.mjs ${{ matrix.target }}
 
       - name: Upload installer
@@ -81,13 +127,14 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
 
       - uses: actions/setup-node@v4
         with:
@@ -107,8 +154,11 @@ jobs:
           import { createHash } from 'node:crypto';
           import fs from 'node:fs';
           const files = fs.readdirSync('artifacts').sort();
-          assert.equal(files.filter(f => f.endsWith('.dmg')).length, 1, 'Expected one macOS DMG');
-          assert.equal(files.filter(f => f.endsWith('.exe')).length, 1, 'Expected one Windows installer');
+          const { version } = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          assert.deepEqual(files, [
+            `MyTranslator_${version}_aarch64.dmg`,
+            `MyTranslator_${version}_x64-setup.exe`,
+          ], 'Expected only the macOS ARM64 and Windows x64 installers for this version');
           const checksums = files.map(f => `${createHash('sha256').update(fs.readFileSync(`artifacts/${f}`)).digest('hex')}  ${f}`);
           fs.writeFileSync('artifacts/SHA256SUMS', checksums.join('\n') + '\n');
           console.log(checksums.join('\n'));
@@ -118,8 +168,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" artifacts/* \
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          if [ "$(git rev-parse 'FETCH_HEAD^{commit}')" != "$(git rev-parse HEAD)" ]; then
+            echo "Tag $RELEASE_TAG moved during the build; refusing to publish." >&2
+            exit 1
+          fi
+          if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft); then
+            if [ "$draft" != true ]; then
+              echo "Release $RELEASE_TAG is already published; refusing to replace its assets." >&2
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag \
+              --title "$RELEASE_TAG 中文版（Mac ARM64 / Windows x64）" \
+              --notes-file "docs/releases/$RELEASE_TAG.md"
+          fi
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest \
             --verify-tag \
-            --title "$GITHUB_REF_NAME 中文版（ARM64）" \
-            --notes-file "docs/releases/$GITHUB_REF_NAME.md"
+            --title "$RELEASE_TAG 中文版（Mac ARM64 / Windows x64）" \
+            --notes-file "docs/releases/$RELEASE_TAG.md"
