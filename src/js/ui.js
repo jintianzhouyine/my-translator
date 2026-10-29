@@ -1,9 +1,9 @@
 /**
  * Transcript UI — continuous paragraph flow display with speaker diarization
  * 
- * Design: All text flows as one continuous paragraph.
+ * Design: Paragraph pairs or side-by-side source/translation panels.
  * - Translated text: white (primary color)
- * - Original text (pending translation): cyan/accent color  
+ * - Original text: smaller secondary text above its translation when enabled
  * - Provisional text (being recognized): dimmed
  * - Speaker labels: shown when speaker changes (e.g. "Speaker 1:")
  * - Language badges: shown when detected language changes (e.g. "🇯🇵 JA")
@@ -19,6 +19,7 @@ export class TranscriptUI {
         this.maxChars = 1200;
         this.fontSize = 16;
         this.viewMode = 'single'; // 'single' or 'dual'
+        this.showOriginal = true;
 
         // Segments: each has { original, translation, status, speaker, language, confidence }
         this.segments = [];
@@ -31,7 +32,7 @@ export class TranscriptUI {
         // Soniox leaves this empty; its provisionalText carries the source-language ASR.
         this.sourceProvisionalText = '';
         // Provider hint — Soniox puts source-language in provisionalText; OpenAI
-        // splits source/target streams; Qwen Live Flash emits target-only.
+        // splits source/target streams; Qwen supplies source text on paired items.
         // Backing field for the `provider` getter/setter below.
         this._provider = 'soniox';
         this.currentSpeaker = null; // Track current speaker to detect changes
@@ -47,7 +48,7 @@ export class TranscriptUI {
         this._provider = value;
         const overlay = document.getElementById('overlay-view');
         if (overlay) {
-            const wantsDual = this.viewMode === 'dual';
+            const wantsDual = this.viewMode === 'dual' && this.showOriginal;
             overlay.classList.toggle('dual-view', wantsDual);
         }
     }
@@ -65,15 +66,12 @@ export class TranscriptUI {
             this.fontColor = fontColor;
             this.container.style.setProperty('--transcript-font-color', fontColor);
         }
-        if (viewMode !== undefined) {
-            this.viewMode = viewMode;
-            const overlay = document.getElementById('overlay-view');
-            if (overlay) {
-                const wantsDual = viewMode === 'dual';
-                overlay.classList.toggle('dual-view', wantsDual);
-            }
-            this._render();
-        }
+        if (showOriginal !== undefined) this.showOriginal = showOriginal !== false;
+        if (viewMode !== undefined) this.viewMode = viewMode;
+        const overlay = document.getElementById('overlay-view');
+        overlay?.classList.toggle('dual-view', this.viewMode === 'dual' && this.showOriginal);
+        // Preserve the idle/listening state when changing display preferences.
+        if (this.segments.length || this.provisionalText || this.sourceProvisionalText) this._render();
     }
 
     /**
@@ -191,7 +189,7 @@ export class TranscriptUI {
 
     /**
      * Set source-side provisional (OpenAI Realtime only). Renders on the source
-     * panel in dual view; ignored in single view (which shows target only).
+     * panel in dual view or above the target in bilingual single view.
      */
     setSourceProvisional(text) {
         this._removeListening();
@@ -209,7 +207,7 @@ export class TranscriptUI {
      */
     hasContent() {
         return this.segments.length > 0 || this.provisionalText ||
-            !!this.container.querySelector('.listening-indicator');
+            this.sourceProvisionalText || !!this.container.querySelector('.listening-indicator');
     }
 
     /**
@@ -233,6 +231,7 @@ export class TranscriptUI {
         this.provisionalText = '';
         this.provisionalSpeaker = null;
         this.provisionalLanguage = null;
+        this.sourceProvisionalText = '';
         this.currentSpeaker = null;
         this.currentLanguage = null;
         this.lastConfidence = null;
@@ -398,6 +397,7 @@ export class TranscriptUI {
         this.provisionalText = '';
         this.provisionalSpeaker = null;
         this.provisionalLanguage = null;
+        this.sourceProvisionalText = '';
         this.currentSpeaker = null;
         this.currentLanguage = null;
         this.lastConfidence = null;
@@ -431,7 +431,7 @@ export class TranscriptUI {
         this._ensureContent();
         this._trimSegments();
 
-        if (this.viewMode === 'dual') {
+        if (this.viewMode === 'dual' && this.showOriginal) {
             this._renderDual();
         } else {
             this._renderSingle();
@@ -444,45 +444,49 @@ export class TranscriptUI {
         let lastRenderedLang = null;
 
         for (const seg of this.segments) {
-            // Speaker label
+            const original = this.showOriginal ? seg.original : '';
+            const translation = seg.status === 'translated' || seg.status === 'provisional'
+                ? seg.translation : '';
+            if (!original && !translation) continue;
             const speakerLabel = this._speakerLabel(seg);
             if (speakerLabel && speakerLabel !== lastRenderedSpeaker) {
                 html += `<span class="speaker-label">${this._esc(speakerLabel)}：</span> `;
                 lastRenderedSpeaker = speakerLabel;
             }
-
-            // Language badge
             if (seg.language && seg.language !== lastRenderedLang) {
                 html += `<span class="lang-badge">${this._langEmoji(seg.language)}</span> `;
                 lastRenderedLang = seg.language;
             }
 
-            if (seg.status === 'translated' && seg.translation) {
-                const confidenceClass = (seg.confidence !== null && seg.confidence < 0.7) ? ' low-confidence' : '';
-                html += `<div class="seg-block">`;
-                html += `<div class="seg-translated${confidenceClass}">${this._esc(seg.translation)}</div>`;
-                html += `</div>`;
-            } else if (seg.status === 'provisional' && seg.translation) {
-                html += `<div class="seg-block"><div class="seg-provisional">${this._esc(seg.translation)}</div></div>`;
+            html += '<div class="seg-block">';
+            if (original) html += `<div class="seg-original">${this._esc(original)}</div>`;
+            else if (this.showOriginal && this.provider === 'qwen' && translation) {
+                html += '<div class="seg-source-waiting">等待原文…</div>';
             }
-            // Skip 'original' segments in single mode — wait for translation
+            if (translation) {
+                const confidenceClass = (seg.confidence != null && seg.confidence < 0.7) ? ' low-confidence' : '';
+                const cls = seg.status === 'provisional' ? 'seg-provisional' : `seg-translated${confidenceClass}`;
+                html += `<div class="${cls}">${this._esc(translation)}</div>`;
+            }
+            html += '</div>';
         }
 
-        if (this.provisionalText) {
+        // Use the provider, not source arrival timing: OpenAI's target may arrive
+        // before ASR. Qwen normally uses the ID-paired segments above.
+        const targetStream = this.provider === 'openai' || this.provider === 'qwen';
+        const source = this.showOriginal ? (targetStream ? this.sourceProvisionalText : this.provisionalText) : '';
+        const target = targetStream ? this.provisionalText : '';
+        if (source || target) {
             if (this.provisionalSpeaker && this.provisionalSpeaker !== lastRenderedSpeaker) {
                 html += `<span class="speaker-label">说话者 ${this._esc(String(this.provisionalSpeaker))}：</span> `;
             }
             if (this.provisionalLanguage && this.provisionalLanguage !== lastRenderedLang) {
                 html += `<span class="lang-badge">${this._langEmoji(this.provisionalLanguage)}</span> `;
             }
-            // OpenAI splits source/target streams: when sourceProvisionalText is
-            // present, provisionalText is already the translated stream → render
-            // as bright translated text. Qwen Live Flash is translation-only —
-            // provisionalText is the target language too. Soniox uses
-            // provisionalText for source ASR → keep dim italic.
-            const isTargetStream = this.sourceProvisionalText || this.provider === 'qwen';
-            const cls = isTargetStream ? 'seg-translated' : 'seg-provisional';
-            html += `<div class="seg-block"><div class="${cls}">${this._esc(this.provisionalText)}</div></div>`;
+            html += '<div class="seg-block">';
+            if (source) html += `<div class="seg-original seg-provisional">${this._esc(source)}</div>`;
+            if (target) html += `<div class="seg-translated">${this._esc(target)}</div>`;
+            html += '</div>';
         }
 
         this.contentEl.innerHTML = html;
@@ -524,7 +528,8 @@ export class TranscriptUI {
             if (seg.status === 'translated' && seg.translation) {
                 const confidenceClass = (seg.confidence !== null && seg.confidence < 0.7) ? ' low-confidence' : '';
                 srcHtml += speakerHtml + langHtml;
-                srcHtml += `<div class="seg-text">${this._esc(seg.original || '')}</div>`;
+                srcHtml += seg.original ? `<div class="seg-text">${this._esc(seg.original)}</div>`
+                    : '<div class="seg-source-waiting">等待原文…</div>';
                 tgtHtml += speakerHtml ? '<div class="speaker-label">&nbsp;</div>' : '';
                 tgtHtml += `<div class="seg-text${confidenceClass}">${this._esc(seg.translation)}</div>`;
             } else if (seg.status === 'provisional') {

@@ -62,6 +62,8 @@ if (!window.__TAURI__ && location.port === '3111') {
     ]);
 
     window.__TAURI__ = {
+        // Explicit preview version; never presented as an installed build.
+        app: { getVersion: async () => '0.0.0-dev' },
         core: {
             invoke: async (cmd, args) => {
                 console.log('[tauri-mock] invoke:', cmd);

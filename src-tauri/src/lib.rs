@@ -76,19 +76,13 @@ pub fn run() {
                 .state::<commands::audio_file_source::AudioFileSourceState>();
             commands::audio_file_source::serve_audio_source(&state, request)
         })
-        .setup(|app| {
-            #[cfg(desktop)]
-            {
-                app.handle()
-                    .plugin(tauri_plugin_updater::Builder::new().build())?;
-                app.handle().plugin(tauri_plugin_process::init())?;
-            }
+        .setup(|_app| {
             // Dev builds (compiled with the `devtools` feature): auto-open the WebView
             // inspector so JS/console errors are visible. Never compiled into release.
             #[cfg(feature = "devtools")]
             {
                 use tauri::Manager;
-                if let Some(win) = app.get_webview_window("main") {
+                if let Some(win) = _app.get_webview_window("main") {
                     win.open_devtools();
                 }
             }

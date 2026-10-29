@@ -148,6 +148,7 @@
             <button id="btn-clear" class="more-menu-item" type="button">🗑 清空字幕</button>
             <div class="more-menu-sep"></div>
             <div class="more-menu-label">显示设置</div>
+            <button id="btn-bilingual-subtitles" class="more-menu-item" type="button" aria-pressed="true">✓ 双语字幕（原文＋译文）</button>
             <div class="floating-controls">
               <div class="font-controls">
                 <button id="btn-font-down" class="float-btn" title="缩小字号">A−</button>
@@ -845,8 +846,9 @@
           </div>
           <label class="checkbox-option" style="margin-top: 8px;">
             <input type="checkbox" id="check-show-original" checked />
-            <span class="checkbox-label">显示原文</span>
+            <span class="checkbox-label">双语字幕（原文＋译文）</span>
           </label>
+          <p class="hint">即时生效并保存；关闭后仅显示译文。也可在实时字幕的「更多」菜单中切换，使用双栏对照按钮可并排阅读。原文和译文可能先后到达，会自动补齐。</p>
         </div>
       </div>
 
@@ -1083,7 +1085,7 @@
         <div class="settings-section about-info">
           <div class="about-app-header">
             <span class="about-app-name">我的翻译器</span>
-            <span class="about-app-version" id="about-version">v0.9.2</span>
+            <span class="about-app-version" id="about-version">读取版本中…</span>
           </div>
           <p class="hint">适用于 macOS 和 Windows 的实时语音翻译工具</p>
         </div>
@@ -1106,13 +1108,10 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              <span id="update-btn-text">下载并安装</span>
+              <span id="update-btn-text">前往 GitHub 下载</span>
             </button>
           </div>
-          <div id="update-progress" class="update-progress" style="display:none;">
-            <div class="progress-bar"><div id="update-progress-fill" class="progress-fill"></div></div>
-            <span id="update-progress-pct" class="progress-pct">0%</span>
-          </div>
+          <p class="hint">从项目的 GitHub 仓库检查正式发布版本。发现更新后，前往发布页下载对应系统的安装包。</p>
         </div>
 
         <div class="settings-section">

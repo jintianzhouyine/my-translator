@@ -1,133 +1,103 @@
-/**
- * Auto-updater module for Tauri v2
- * Tries multiple access patterns: plugin API, then invoke fallback
- */
+/** Check this fork's published releases; installation is performed by the user. */
+import { LATEST_RELEASE_API, PROJECT_URL, openProjectUrl } from './project-links.js';
 
-class Updater {
-    constructor() {
+function parseVersion(value) {
+    const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(String(value));
+    if (!match) throw new Error(`无法识别版本号：${value}`);
+    return { numbers: match.slice(1, 4).map(BigInt), prerelease: match[4]?.split('.') || [] };
+}
+
+/** Positive when candidate is newer. Build metadata does not affect precedence. */
+export function compareVersions(candidate, current) {
+    const a = parseVersion(candidate), b = parseVersion(current);
+    for (let index = 0; index < 3; index++) {
+        if (a.numbers[index] !== b.numbers[index]) return a.numbers[index] > b.numbers[index] ? 1 : -1;
+    }
+    if (!a.prerelease.length || !b.prerelease.length) return Number(!a.prerelease.length) - Number(!b.prerelease.length);
+    for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index++) {
+        const x = a.prerelease[index], y = b.prerelease[index];
+        if (x === undefined || y === undefined) return x === undefined ? -1 : 1;
+        if (x === y) continue;
+        const xNumeric = /^\d+$/.test(x), yNumeric = /^\d+$/.test(y);
+        if (xNumeric && yNumeric) return BigInt(x) > BigInt(y) ? 1 : -1;
+        if (xNumeric !== yNumeric) return xNumeric ? -1 : 1;
+        return x > y ? 1 : -1;
+    }
+    return 0;
+}
+
+export async function getAppVersion() {
+    const app = globalThis.window?.__TAURI__?.app;
+    const invoke = globalThis.window?.__TAURI__?.core?.invoke;
+    if (!app?.getVersion && !invoke) throw new Error('当前环境无法读取应用版本，请在桌面应用中检查更新。');
+    const version = await (app?.getVersion ? app.getVersion() : invoke('plugin:app|version'));
+    parseVersion(version);
+    return version;
+}
+
+export class Updater {
+    constructor({ fetchRelease = (...args) => globalThis.fetch(...args), getVersion = getAppVersion,
+        openUrl = openProjectUrl, timeoutMs = 15000 } = {}) {
+        this.fetchRelease = fetchRelease;
+        this.getVersion = getVersion;
+        this.openUrl = openUrl;
+        this.timeoutMs = timeoutMs;
         this.updateAvailable = null;
-        this.onUpdateFound = null; // callback(version, notes)
-        this.onCheckComplete = null; // callback(hasUpdate)
-        this.onError = null; // callback(error)
+        this.onUpdateFound = null;
+        this.onCheckComplete = null; // callback(hasUpdate, error); failure is not "up to date".
+        this.onError = null;
+        this._checking = null;
     }
 
-    /**
-     * Check for updates - try plugin API first, then invoke
-     */
-    async checkForUpdates() {
-        // Method 1: Plugin API (this worked in the original toast version)
-        const check = window.__TAURI__?.updater?.check;
-        if (check) {
-            console.log('[Updater] Using plugin API (window.__TAURI__.updater.check)');
-            return this._checkViaPlugin(check);
-        }
-
-        // Method 2: Invoke
-        const invoke = window.__TAURI__?.core?.invoke;
-        if (invoke) {
-            console.log('[Updater] Using invoke fallback');
-            return this._checkViaInvoke(invoke);
-        }
-
-        // Debug: log what's available
-        console.log('[Updater] No updater API found!');
-        console.log('[Updater] __TAURI__ keys:', Object.keys(window.__TAURI__ || {}));
-        if (window.__TAURI__) {
-            for (const [k, v] of Object.entries(window.__TAURI__)) {
-                console.log(`[Updater]   __TAURI__.${k}:`, typeof v, v ? Object.keys(v) : 'null');
-            }
-        }
-        if (this.onCheckComplete) this.onCheckComplete(false);
+    checkForUpdates() {
+        if (this._checking) return this._checking;
+        this._checking = this._check().finally(() => { this._checking = null; });
+        return this._checking;
     }
 
-    async _checkViaPlugin(check) {
+    async _check() {
+        this.updateAvailable = null;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), this.timeoutMs);
         try {
-            console.log('[Updater] Checking for updates via plugin API...');
-            const update = await check();
-
-            if (update) {
-                console.log(`[Updater] Update found: v${update.version}`);
-                this.updateAvailable = update;
-                if (this.onUpdateFound) {
-                    this.onUpdateFound(update.version, update.body || '');
-                }
-                if (this.onCheckComplete) this.onCheckComplete(true);
-            } else {
-                console.log('[Updater] App is up to date');
-                if (this.onCheckComplete) this.onCheckComplete(false);
+            const currentVersion = await this.getVersion();
+            parseVersion(currentVersion);
+            const response = await this.fetchRelease(LATEST_RELEASE_API, {
+                headers: { Accept: 'application/vnd.github+json' },
+                cache: 'no-store', signal: controller.signal,
+            });
+            if (response.status === 403 || response.status === 429) throw new Error('GitHub 暂时限制了请求，请稍后重试。');
+            if (response.status === 404) throw new Error('当前仓库尚无可用的正式发布版本。');
+            if (!response.ok) throw new Error(`GitHub 返回 HTTP ${response.status}，请稍后重试。`);
+            const release = await response.json();
+            if (!release || typeof release !== 'object' || release.draft || release.prerelease || !/^v?\d+\.\d+\.\d+$/.test(release.tag_name || '')) {
+                throw new Error('GitHub 返回的正式版本信息无效。');
             }
-        } catch (err) {
-            console.warn('[Updater] Plugin check failed:', err.message || err);
-            if (this.onError) this.onError(err);
-            if (this.onCheckComplete) this.onCheckComplete(false);
+            if (compareVersions(release.tag_name, currentVersion) > 0) {
+                this.updateAvailable = {
+                    version: release.tag_name.replace(/^v/, ''),
+                    body: typeof release.body === 'string' ? release.body : '',
+                    url: `${PROJECT_URL}/releases/tag/${encodeURIComponent(release.tag_name)}`,
+                };
+                this.onUpdateFound?.(this.updateAvailable.version, this.updateAvailable.body);
+            }
+            this.onCheckComplete?.(Boolean(this.updateAvailable), null);
+            return this.updateAvailable;
+        } catch (error) {
+            const reported = controller.signal.aborted
+                ? new Error('连接 GitHub 超时，请检查网络后重试。')
+                : error instanceof Error ? error : new Error(String(error));
+            this.onError?.(reported);
+            this.onCheckComplete?.(false, reported);
+            return null;
+        } finally {
+            clearTimeout(timer);
         }
     }
 
-    async _checkViaInvoke(invoke) {
-        try {
-            console.log('[Updater] Checking for updates via invoke...');
-            const result = await invoke('plugin:updater|check');
-            console.log('[Updater] invoke result:', JSON.stringify(result));
-
-            if (result && result.available) {
-                console.log(`[Updater] Update found: v${result.version}`);
-                this.updateAvailable = result;
-                if (this.onUpdateFound) {
-                    this.onUpdateFound(result.version, result.body || '');
-                }
-                if (this.onCheckComplete) this.onCheckComplete(true);
-            } else {
-                console.log('[Updater] App is up to date');
-                if (this.onCheckComplete) this.onCheckComplete(false);
-            }
-        } catch (err) {
-            console.warn('[Updater] invoke check failed:', err.message || err);
-            if (this.onError) this.onError(err);
-            if (this.onCheckComplete) this.onCheckComplete(false);
-        }
-    }
-
-    /**
-     * Download and install pending update
-     * @param {Function} onProgress - callback(downloaded, total)
-     */
-    async downloadAndInstall(onProgress) {
-        if (!this.updateAvailable) return;
-
-        try {
-            // If updateAvailable is the plugin update object (has downloadAndInstall method)
-            if (typeof this.updateAvailable.downloadAndInstall === 'function') {
-                let downloaded = 0;
-                let contentLength = 0;
-
-                await this.updateAvailable.downloadAndInstall((event) => {
-                    switch (event.event) {
-                        case 'Started':
-                            contentLength = event.data.contentLength || 0;
-                            console.log(`[Updater] Downloading ${contentLength} bytes...`);
-                            break;
-                        case 'Progress':
-                            downloaded += event.data.chunkLength;
-                            if (onProgress) onProgress(downloaded, contentLength);
-                            break;
-                        case 'Finished':
-                            console.log('[Updater] Download complete');
-                            break;
-                    }
-                });
-            } else {
-                // Invoke fallback
-                const invoke = window.__TAURI__?.core?.invoke;
-                if (invoke) {
-                    await invoke('plugin:updater|download_and_install');
-                }
-            }
-
-            console.log('[Updater] Update installed, restarting...');
-        } catch (err) {
-            console.error('[Updater] Install failed:', err);
-            throw err;
-        }
+    async openReleasePage() {
+        if (!this.updateAvailable) throw new Error('请先检查是否有新版本。');
+        await this.openUrl(this.updateAvailable.url);
     }
 }
 

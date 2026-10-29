@@ -15,7 +15,8 @@ import { tiktokTTS } from './tiktok-tts.js';
 import { localTTS } from './local-tts.js';
 import { audioPlayer, readAudioPlayer } from './audio-player.js';
 import { Reader } from './reader.js';
-import { updater } from './updater.js';
+import { updater, getAppVersion } from './updater.js';
+import { PROJECT_URL, PROJECT_ISSUES_URL, openProjectUrl } from './project-links.js';
 import { sessionStore } from './session-store.js';
 import { QWEN_LANGS } from './qwen-langs.js';
 import { QwenSettingsUI } from './qwen-settings.js';
@@ -274,6 +275,13 @@ class App {
         // View mode toggle (dual panel)
         document.getElementById('btn-view-mode').addEventListener('click', () => {
             this._toggleViewMode();
+        });
+
+        document.getElementById('btn-bilingual-subtitles')?.addEventListener('click', () => {
+            void this._setShowOriginal(settingsManager.get().show_original === false);
+        });
+        document.getElementById('check-show-original')?.addEventListener('change', (event) => {
+            void this._setShowOriginal(event.target.checked);
         });
 
         // Font size quick controls
@@ -1053,6 +1061,14 @@ class App {
     // ─── Apply Settings ────────────────────────────────────
 
     _applySettings(settings) {
+        const previous = this._appliedSettings;
+        const subtitleOnly = previous && previous.show_original !== settings.show_original
+            && Object.keys(settings).every(key => key === 'show_original' || settings[key] === previous[key]);
+        this._appliedSettings = { ...settings };
+        this._applySubtitleDisplay(settings);
+        // A live subtitle toggle must not change capture, routing, or narration.
+        if (subtitleOnly) return;
+
         // Update overlay opacity
         const overlayView = document.getElementById('overlay-view');
         overlayView.style.opacity = settings.overlay_opacity || 0.85;
@@ -1081,7 +1097,6 @@ class App {
         if (this.transcriptUI) {
             this.transcriptUI.configure({
                 maxLines: settings.max_lines || 5,
-                showOriginal: settings.show_original !== false,
                 fontSize: settings.font_size || 16,
             });
         }
@@ -3201,12 +3216,57 @@ class App {
         this.isCompact = toggleManualCompact();
     }
 
-    _toggleViewMode() {
+    _applySubtitleDisplay(settings) {
+        const showOriginal = settings.show_original !== false;
+        this.transcriptUI?.configure({ showOriginal });
+        const checkbox = document.getElementById('check-show-original');
+        if (checkbox) checkbox.checked = showOriginal;
+        const button = document.getElementById('btn-bilingual-subtitles');
+        if (button) {
+            button.textContent = showOriginal ? '✓ 双语字幕（原文＋译文）' : '双语字幕（原文＋译文）';
+            button.setAttribute('aria-pressed', String(showOriginal));
+        }
+        this._syncViewModeButton();
+    }
+
+    async _setShowOriginal(showOriginal) {
+        if (this._savingSubtitleDisplay) return;
+        this._savingSubtitleDisplay = true;
+        const controls = ['check-show-original', 'btn-bilingual-subtitles']
+            .map(id => document.getElementById(id)).filter(Boolean);
+        controls.forEach(control => { control.disabled = true; });
+        try {
+            await settingsManager.save({ show_original: showOriginal });
+            this._applySubtitleDisplay(settingsManager.get());
+        } catch (error) {
+            this._applySubtitleDisplay(settingsManager.get());
+            this._showToast(`字幕设置保存失败：${error.message || error}`, 'error');
+        } finally {
+            controls.forEach(control => { control.disabled = false; });
+            this._savingSubtitleDisplay = false;
+        }
+    }
+
+    _syncViewModeButton() {
+        const button = document.getElementById('btn-view-mode');
+        if (!button || !this.transcriptUI) return;
+        const active = this.transcriptUI.viewMode === 'dual' && this.transcriptUI.showOriginal !== false;
+        button.classList.toggle('active', active);
+        button.title = active ? '切换上下双语字幕' : '切换双栏对照';
+    }
+
+    async _toggleViewMode() {
+        if (this.transcriptUI.showOriginal === false) {
+            await this._setShowOriginal(true);
+            if (settingsManager.get().show_original === false) return;
+            this.transcriptUI.configure({ viewMode: 'dual' });
+            this._syncViewModeButton();
+            return;
+        }
         const isDual = this.transcriptUI.viewMode === 'dual';
         const newMode = isDual ? 'single' : 'dual';
         this.transcriptUI.configure({ viewMode: newMode });
-        const btn = document.getElementById('btn-view-mode');
-        if (btn) btn.classList.toggle('active', newMode === 'dual');
+        this._syncViewModeButton();
     }
 
     _adjustFontSize(delta) {
@@ -3374,37 +3434,43 @@ class App {
     }
 
     async _checkForUpdates() {
-        updater.onUpdateFound = (version, notes) => {
-            this._onUpdateAvailable(version, notes);
-        };
+        updater.onUpdateFound = (version, notes) => this._onUpdateAvailable(version, notes);
         updater.onError = (err) => {
             const statusText = document.getElementById('update-status-text');
             if (statusText) statusText.textContent = `⚠️ 检查更新失败：${err.message || err}`;
         };
-        updater.onCheckComplete = (hasUpdate) => {
+        updater.onCheckComplete = (hasUpdate, error) => {
             const checkBtn = document.getElementById('btn-check-update');
-            if (checkBtn) checkBtn.classList.remove('spinning');
-            if (!hasUpdate && !this._pendingUpdateVersion) {
+            if (checkBtn) {
+                checkBtn.classList.remove('spinning');
+                checkBtn.disabled = false;
+            }
+            if (!hasUpdate && !error) {
                 const statusText = document.getElementById('update-status-text');
                 if (statusText) statusText.textContent = '✅ 当前已是最新版本';
             }
         };
-        // Delay check slightly so app finishes loading first
-        setTimeout(() => {
-            const statusText = document.getElementById('update-status-text');
-            const checkBtn = document.getElementById('btn-check-update');
-            if (statusText) statusText.textContent = '正在检查更新…';
-            if (checkBtn) checkBtn.classList.add('spinning');
-            updater.checkForUpdates();
-        }, 3000);
+        // Let startup finish; a manual check already in progress is reused.
+        setTimeout(() => this._triggerUpdateCheck(), 3000);
     }
 
     _triggerUpdateCheck() {
         const statusText = document.getElementById('update-status-text');
         const checkBtn = document.getElementById('btn-check-update');
-        if (statusText) statusText.textContent = '正在检查更新…';
-        if (checkBtn) checkBtn.classList.add('spinning');
-        updater.checkForUpdates();
+        if (checkBtn?.disabled) return;
+        this._pendingUpdateVersion = null;
+        const badge = document.getElementById('settings-badge');
+        const actions = document.getElementById('update-actions');
+        if (badge) badge.style.display = 'none';
+        if (actions) actions.style.display = 'none';
+        document.getElementById('update-status')?.classList.remove('has-update');
+        document.querySelector('.update-hint')?.remove();
+        if (statusText) statusText.textContent = '正在检查 GitHub 发布版本…';
+        if (checkBtn) {
+            checkBtn.classList.add('spinning');
+            checkBtn.disabled = true;
+        }
+        return updater.checkForUpdates();
     }
 
     _onUpdateAvailable(version, notes) {
@@ -3440,67 +3506,32 @@ class App {
     }
 
     _initAboutTab() {
-        // GitHub links
-        document.getElementById('link-github')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            window.__TAURI__?.opener?.openUrl('https://github.com/phuc-nt/my-translator');
-        });
-        document.getElementById('link-issues')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            window.__TAURI__?.opener?.openUrl('https://github.com/phuc-nt/my-translator/issues');
+        const versionLabel = document.getElementById('about-version');
+        getAppVersion().then(version => {
+            if (versionLabel) versionLabel.textContent = `v${version}`;
+        }).catch(() => {
+            if (versionLabel) versionLabel.textContent = '版本读取失败';
         });
 
-        // Check for Updates button
-        document.getElementById('btn-check-update')?.addEventListener('click', () => {
-            this._triggerUpdateCheck();
-        });
-
-        // Download & Install button
+        for (const [id, url] of [['link-github', PROJECT_URL], ['link-issues', PROJECT_ISSUES_URL]]) {
+            const link = document.getElementById(id);
+            if (link) link.href = url;
+            link?.addEventListener('click', async (event) => {
+                event.preventDefault();
+                try { await openProjectUrl(url); }
+                catch (error) { this._showToast(`打开链接失败：${error.message || error}`, 'error'); }
+            });
+        }
+        document.getElementById('btn-check-update')?.addEventListener('click', () => this._triggerUpdateCheck());
         document.getElementById('btn-do-update')?.addEventListener('click', async () => {
-            const btnText = document.getElementById('update-btn-text');
             const btn = document.getElementById('btn-do-update');
-            const progressDiv = document.getElementById('update-progress');
-            const progressFill = document.getElementById('update-progress-fill');
-            const progressPct = document.getElementById('update-progress-pct');
-
             if (btn) btn.disabled = true;
-            if (btnText) btnText.textContent = '下载中…';
-            if (progressDiv) progressDiv.style.display = '';
-
             try {
-                await updater.downloadAndInstall((downloaded, total) => {
-                    if (total > 0) {
-                        const pct = Math.round((downloaded / total) * 100);
-                        if (progressFill) progressFill.style.width = `${pct}%`;
-                        if (progressPct) progressPct.textContent = `${pct}%`;
-                        if (btnText) btnText.textContent = `正在下载 ${pct}%…`;
-                    }
-                });
-                // Install succeeded! Try to restart
-                if (btnText) btnText.textContent = '正在重启…';
-                try {
-                    const relaunch = window.__TAURI__?.process?.relaunch;
-                    if (relaunch) {
-                        await relaunch();
-                    } else {
-                        const invoke = window.__TAURI__?.core?.invoke;
-                        if (invoke) await invoke('plugin:process|restart');
-                    }
-                } catch (restartErr) {
-                    // Restart failed (e.g. process plugin not available) but update IS installed
-                    console.warn('[Update] Restart failed, update is installed:', restartErr);
-                    if (btnText) btnText.textContent = '✅ 更新完成，请重启应用';
-                    const statusText = document.getElementById('update-status-text');
-                    if (statusText) statusText.textContent = '✅ 更新已安装，请关闭并重新打开应用';
-                    if (btn) btn.disabled = true;
-                }
-            } catch (err) {
-                const errMsg = err?.message || String(err);
-                if (btnText) btnText.textContent = '失败，请重试';
-                const statusText = document.getElementById('update-status-text');
-                if (statusText) statusText.textContent = `⚠️ 安装失败：${errMsg}`;
+                await updater.openReleasePage();
+            } catch (error) {
+                this._showToast(`打开下载页面失败：${error.message || error}`, 'error');
+            } finally {
                 if (btn) btn.disabled = false;
-                console.error('[Update]', err);
             }
         });
     }

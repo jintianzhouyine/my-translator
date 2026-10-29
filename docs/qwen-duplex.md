@@ -77,3 +77,5 @@ ProductName = 产品名
 - [Qwen 实时翻译使用指南、语种表和热词配置](https://help.aliyun.com/zh/model-studio/qwen3-5-livetranslate-flash-realtime)
 - [Qwen3.8 模型、地域与计费](https://help.aliyun.com/zh/model-studio/qwen3-8-livetranslate-flash-realtime)
 - [实时翻译客户端事件](https://help.aliyun.com/zh/model-studio/live-translator-client-events)
+
+实时字幕可以在「设置 → 显示设置」或「更多」中切换原文＋译文/仅译文，具体见[实时双语字幕](live-subtitles.md)。

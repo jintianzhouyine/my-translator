@@ -729,11 +729,17 @@ body {
 /* Original text — smaller, dimmer, above translation */
 .seg-original {
   display: block;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.7);
   font-weight: 400;
-  font-size: 0.8em;
+  font-size: 0.9em;
   margin-top: 8px;
   margin-bottom: 2px;
+}
+
+.seg-source-waiting {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.8em;
+  font-style: italic;
 }
 
 /* ─── Floating Controls (bottom) ────────────────────── */

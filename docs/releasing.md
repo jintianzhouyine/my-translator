@@ -15,7 +15,7 @@ GitHub Actions 仅接受手动触发，推送代码、推送 tag 或创建 Relea
 
 1. 打开 [Build & Release 工作流](https://github.com/jintianzhouyine/my-translator/actions/workflows/release.yml)。
 2. 点击 **Run workflow**，保留 **Use workflow from: main**。
-3. 在 **Existing version tag to build and publish** 中填写已有 tag，例如 `v0.10.3`。
+3. 在 **Existing version tag to build and publish** 中填写已有 tag，例如 `v0.10.4`。
 4. 再次点击 **Run workflow**。
 
 工作流先校验 tag、应用版本和发布说明，并将 tag 解析为固定的 commit。
@@ -31,6 +31,16 @@ macOS 和 Windows 任务都构建该 commit，而不是构建触发时 main 上�
 任何构建失败都不会发布草稿；修复之前请查看对应任务的日志。
 草稿上传中途失败时可重跑工作流，已上传的同名草稿附件会被替换。
 对已经正式发布的版本，工作流会拒绝覆盖安装包；代码修复应使用新的版本和 tag。
+
+## 应用内检查更新
+
+「设置 → 关于 → 检查更新」读取本仓库的最新正式 Release，并与已安装应用版本比较。
+发现新版后点击「前往 GitHub 下载」，在 Release 页面选择适合自己电脑的安装包后安装。
+GitHub 项目仓库和问题反馈也指向 `jintianzhouyine/my-translator`。
+
+当前发布仅提供上述安装包与校验文件，不提供 Tauri 签名自动更新包或 `latest.json`，
+应用不会自动下载、安装或重启。网络错误和 GitHub 限流会明确提示，可以稍后重试，
+也可以直接访问 [Release 下载页](https://github.com/jintianzhouyine/my-translator/releases/latest)。
 
 ## 构建范围
 

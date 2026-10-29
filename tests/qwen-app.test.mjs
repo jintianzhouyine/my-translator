@@ -44,6 +44,7 @@ class Element {
     querySelectorAll() { return this.children || []; }
     get options() { return this.children; }
     addEventListener() {}
+    setAttribute(name, value) { this[name] = value; }
     append(...nodes) { this.children.push(...nodes); }
     replaceChildren(...nodes) { this.children = nodes; this.value = ''; }
     showModal() { this.open = true; this.modalOpens++; }
@@ -380,4 +381,49 @@ test('saving a running Qwen configuration waits for pause and reports a failed s
     assert.equal(f.toasts.length, 1);
     assert.equal(f.toasts[0].type, 'error');
     assert.match(f.toasts[0].message, /保存失败.*disk full/);
+});
+
+
+test('live bilingual preference saves only display content without pausing a running call', async () => {
+    const f = fixture({ show_original: true });
+    f.app.isRunning = true;
+    f.app.pause = () => { throw new Error('display-only change must not pause capture'); };
+    const configurations = [];
+    f.app.transcriptUI.configure = settings => configurations.push(settings);
+    const save = f.app._setShowOriginal(false);
+    assert.deepEqual(f.pendingSaves[0].patch, { show_original: false });
+    assert.equal(f.element('btn-bilingual-subtitles').disabled, true);
+    f.pendingSaves[0].resolve();
+    await save;
+    assert.equal(f.saved().show_original, false);
+    assert.equal(f.element('check-show-original').checked, false);
+    assert.equal(f.element('btn-bilingual-subtitles')['aria-pressed'], 'false');
+    assert.equal(f.element('btn-bilingual-subtitles').disabled, false);
+    assert.equal(configurations.at(-1).showOriginal, false);
+    assert.equal(f.app.isRunning, true);
+});
+
+test('failed bilingual preference save restores the previous control state', async () => {
+    const f = fixture({ show_original: true });
+    f.app.transcriptUI.configure = () => {};
+    f.element('check-show-original').checked = false;
+    const save = f.app._setShowOriginal(false);
+    f.pendingSaves[0].reject(new Error('disk full'));
+    await save;
+    assert.equal(f.saved().show_original, true);
+    assert.equal(f.element('check-show-original').checked, true);
+    assert.equal(f.element('btn-bilingual-subtitles').disabled, false);
+    assert.match(f.toasts.at(-1).message, /字幕设置保存失败.*disk full/);
+});
+
+test('display-only notification preserves narration and does not reconfigure audio routing', () => {
+    const f = fixture({ show_original: true });
+    f.app._appliedSettings = f.saved();
+    f.app.ttsEnabled = true;
+    f.app.transcriptUI.configure = () => {};
+    f.app._updateSourceButtons = () => { throw new Error('must not reconfigure audio'); };
+    f.app._updateTTSButton = () => { throw new Error('must not reset narration'); };
+    f.app._applySettings({ ...f.saved(), show_original: false });
+    assert.equal(f.app.ttsEnabled, true);
+    assert.equal(f.element('check-show-original').checked, false);
 });
