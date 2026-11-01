@@ -1,6 +1,7 @@
 pub mod microphone;
 pub mod resampler;
 pub mod routed;
+pub mod system_devices;
 
 #[cfg(target_os = "macos")]
 pub mod system_audio;

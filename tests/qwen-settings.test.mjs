@@ -114,14 +114,18 @@ test('initialization does not enumerate devices before Qwen is selected', () => 
     assert.equal(calls, 0);
 });
 
-test('saved Windows capture device is cleared when the platform uses automatic system capture', async () => {
-    const ui = new QwenSettingsUI({ document: fakeDocument(), invoke: async () => ({
+test('macOS keeps a physical playback device for restoration while capture remains automatic', async () => {
+    const doc = fakeDocument();
+    const ui = new QwenSettingsUI({ document: doc, invoke: async () => ({
         ...devices, supports_system_device_selection: false,
     }) });
-    ui.apply({ ...configured, qwen_system_device: 'old-windows-output' });
+    ui.apply({ ...configured, qwen_system_device: 'headphones' });
     await ui.refreshDevices();
-    assert.equal(ui.read().qwen_system_device, '');
+    assert.equal(ui.read().qwen_system_device, 'headphones');
     assert.equal(ui.read().qwen_output_device, 'virtual-id');
+    assert.equal(doc.getElementById('qwen-system-device-field').style.display, '');
+    doc.getElementById('select-qwen-system-device').value = 'old-windows-output';
+    assert.throws(() => ui.read(), /播放设备已不可用/);
 });
 
 test('missing capture devices and a microphone that receives our own translated output are rejected', async () => {

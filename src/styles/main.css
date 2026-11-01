@@ -49,6 +49,22 @@
   --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Independent original/translated audio sent to the meeting microphone. */
+.qwen-audio-controls { flex: 0 1 480px; min-width: 410px; max-width: 100%; margin-left: auto; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-glass); }
+.qwen-audio-controls[hidden] { display: none; }
+.qwen-mix-row { display: flex; align-items: center; gap: 12px; }
+.qwen-mix-title { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.qwen-mix-source { display: flex; align-items: center; gap: 6px; flex: 1 1 0; min-width: 0; }
+.qwen-mix-toggle { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; cursor: pointer; font-size: 12px; }
+.qwen-mix-toggle input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.qwen-mix-source input[type="range"] { flex: 1; min-width: 40px; width: 64px; accent-color: var(--accent); cursor: pointer; }
+.qwen-mix-source output { min-width: 32px; font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 11px; text-align: right; }
+.qwen-mix-status { margin-top: 5px; font-size: 10px; line-height: 1.5; color: var(--text-secondary); }
+@media (max-width: 760px) {
+  .live-top-row:has(.qwen-audio-controls:not([hidden])) { flex-wrap: wrap; }
+  .qwen-audio-controls { flex-basis: 100%; min-width: 0; }
+}
+
 html,
 body {
   width: 100%;
@@ -2424,7 +2440,7 @@ body:not(.activity-live) .floating-controls { display: none; }
 /* ── Live panel chrome (phase 2): status row + action row + ⋯ menu ── */
 .toolbar-spacer { flex: 1; height: 100%; }
 
-.live-status-row {
+.live-top-row {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -2433,9 +2449,22 @@ body:not(.activity-live) .floating-controls { display: none; }
   border-bottom: 1px solid var(--border-subtle);
   font-size: 11px;
 }
+.live-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.live-top-row:has(.live-status-row.chrome-hidden):has(.qwen-audio-controls[hidden]) { display: none; }
+/* Keep audio controls available in compact mode, below the hover-revealed title bar. */
+.compact-mode:hover .live-top-row:has(.qwen-audio-controls:not([hidden])) { padding-top: calc(var(--control-bar-height) + 6px); }
 .live-lang {
   color: var(--text-secondary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .source-select {
   margin-left: auto;

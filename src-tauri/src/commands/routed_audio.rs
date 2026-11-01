@@ -1,4 +1,4 @@
-use crate::audio::routed::{self, AudioDeviceList, CaptureEvent, RoutedAudioState};
+use crate::audio::routed::{self, AudioDeviceList, CaptureEvent, MixSettings, RoutedAudioState};
 use tauri::{ipc::Channel, AppHandle, Manager, State};
 
 #[tauri::command]
@@ -46,12 +46,13 @@ pub async fn stop_duplex_capture(app: AppHandle) -> Result<(), String> {
 pub async fn start_translation_output(
     device_id: String,
     on_error: Channel<String>,
+    mix: Option<MixSettings>,
     app: AppHandle,
 ) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<RoutedAudioState>();
         let _operation = state.operation.lock().map_err(|e| e.to_string())?;
-        state.start_output(device_id, on_error)
+        state.start_output(device_id, on_error, mix.unwrap_or_default())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -75,4 +76,24 @@ pub async fn stop_translation_output(output_id: u64, app: AppHandle) -> Result<(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn set_translation_mix(
+    output_id: u64,
+    original_enabled: bool,
+    original_volume: f32,
+    translated_enabled: bool,
+    translated_volume: f32,
+    state: State<'_, RoutedAudioState>,
+) -> Result<(), String> {
+    state.set_mix(
+        output_id,
+        MixSettings {
+            original_enabled,
+            original_volume,
+            translated_enabled,
+            translated_volume,
+        },
+    )
 }

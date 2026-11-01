@@ -4,6 +4,7 @@
  */
 
 import { settingsManager } from './settings.js';
+import { hasRememberedEngine } from './engine-startup.js';
 import { TranscriptUI } from './ui.js';
 import { sonioxClient } from './soniox.js';
 import { elevenLabsTTS } from './elevenlabs-tts.js';
@@ -21,6 +22,7 @@ import { sessionStore } from './session-store.js';
 import { QWEN_LANGS } from './qwen-langs.js';
 import { QwenSettingsUI } from './qwen-settings.js';
 import { validateQwenCall } from './qwen-call.js';
+import { QwenAudioControls, isQwenMixSetting } from './qwen-audio-controls.js';
 import { AudioFileTranslation, exportAudioFileText } from './audio-file-translation.js';
 import { AudioFileUI } from './audio-file-ui.js';
 import { createNativeAudioSource } from './audio-file-native.js';
@@ -87,6 +89,15 @@ class App {
             onError: (message) => this._showToast(String(message), 'error') });
         this.qwenSettingsUI.init();
         this.qwenSettingsUI.apply(initSettings);
+        this.qwenAudioControls = new QwenAudioControls({
+            getSettings: () => settingsManager.get(),
+            saveSettings: patch => settingsManager.save(patch),
+            applyMix: mix => this.qwenCall?.setMix(mix),
+            onError: message => this._showToast(message, 'error'),
+        });
+        this.qwenAudioControls.init();
+        try { await invoke('recover_system_audio_route'); }
+        catch (error) { this._showToast(`恢复系统音频设备失败：${error}`, 'error'); }
 
         // Apply saved settings to UI
         this._applySettings(settingsManager.get());
@@ -426,7 +437,6 @@ class App {
         document.querySelectorAll('#engine-picker .engine-card').forEach(card => {
             card.addEventListener('click', () => {
                 this._selectEngineClass(card.dataset.engineClass);
-                this._hideEnginePicker();
             });
         });
 
@@ -827,7 +837,14 @@ class App {
 
     _populateSettingsForm() {
         const s = settingsManager.get();
-        this.qwenSettingsUI?.apply(s);
+        const run = this.qwenCall?.run;
+        // Auto-routing changes the system default to the cable. Keep the
+        // already resolved physical devices when editing a live call's form.
+        const routedSettings = run?.routeId && !run.closing && run.settings.qwen_manage_system_devices !== false
+            ? { ...s, qwen_microphone_device: run.settings.qwen_microphone_device,
+                qwen_system_device: run.settings.qwen_system_device }
+            : s;
+        this.qwenSettingsUI?.apply(routedSettings);
 
         document.getElementById('input-api-key').value = s.soniox_api_key || '';
         const openaiKeyInput = document.getElementById('input-openai-key');
@@ -974,6 +991,7 @@ class App {
             source_language: document.getElementById('select-source-lang').value,
             target_language: document.getElementById('select-target-lang').value,
             translation_mode: document.getElementById('select-translation-mode').value,
+            engine_selection_completed: true,
             translation_type: document.getElementById('select-translation-type')?.value || 'one_way',
             language_a: document.getElementById('select-lang-a')?.value || 'ja',
             language_b: document.getElementById('select-lang-b')?.value || 'vi',
@@ -1051,6 +1069,7 @@ class App {
         try {
             if (this.isRunning || this.qwenCall?.run) await this.pause();
             await settingsManager.save(settings);
+            this._hideEnginePicker();
             this._showToast('设置已保存', 'success');
             this._showView('overlay');
         } catch (err) {
@@ -1064,10 +1083,12 @@ class App {
         const previous = this._appliedSettings;
         const subtitleOnly = previous && previous.show_original !== settings.show_original
             && Object.keys(settings).every(key => key === 'show_original' || settings[key] === previous[key]);
+        const mixOnly = previous && Object.keys(settings).every(key => isQwenMixSetting(key) || settings[key] === previous[key]);
         this._appliedSettings = { ...settings };
         this._applySubtitleDisplay(settings);
+        this.qwenAudioControls?.apply(settings);
         // A live subtitle toggle must not change capture, routing, or narration.
-        if (subtitleOnly) return;
+        if (subtitleOnly || mixOnly) return;
 
         // Update overlay opacity
         const overlayView = document.getElementById('overlay-view');
@@ -2021,11 +2042,12 @@ class App {
         }
 
         this._setEnginePillLocked(true);
-        const switching = settingsManager.save({ translation_mode: nextMode })
+        const switching = settingsManager.save({ translation_mode: nextMode, engine_selection_completed: true })
             .then(() => {
                 const select = document.getElementById('select-translation-mode');
                 if (select) select.value = nextMode;
                 this._updateModeUI(nextMode);
+                this._hideEnginePicker();
                 return true;
             })
             .catch(error => {
@@ -2069,8 +2091,12 @@ class App {
     }
 
     _maybeShowEnginePicker() {
-        // Show on each fresh launch until first dismissal (click on a card or
-        // first Start). Once dismissed, the toolbar pill is the only switcher.
+        // Only brand-new, unconfigured users need onboarding. A remembered
+        // choice remains valid even if its API key is later cleared or expires.
+        if (hasRememberedEngine(settingsManager.get())) {
+            this._hideEnginePicker();
+            return;
+        }
         if (this._enginePickerDismissed) return;
         if (this.isRunning || this.isStarting) return;
         if (this.transcriptUI && this.transcriptUI.hasContent()) return;
@@ -2140,6 +2166,7 @@ class App {
         if (sectionOpenAiKey) sectionOpenAiKey.style.display = isOpenAi ? '' : 'none';
         if (sectionQwenKey) sectionQwenKey.style.display = isQwen ? '' : 'none';
         this.qwenSettingsUI?.setVisible(isQwen);
+        this.qwenAudioControls?.setVisible(isQwen && s.qwen_duplex_enabled !== false);
         for (const id of ['section-languages', 'section-audio-source', 'select-audio-source']) {
             const element = document.getElementById(id);
             if (element) element.style.display = isQwen ? 'none' : '';
@@ -2564,6 +2591,7 @@ class App {
         // One controller owns capture, two translation connections and the selected output.
         const call = new QwenCallController({
             invoke, Channel, createClient: () => new QwenRealtimeClient(),
+            onWarning: message => this._showToast(message, 'error'),
             onStateChange: (state) => this._updateStatus(state),
             onProvisional: (direction, text, meta) => {
                 this.transcriptUI.upsertQwenSegment({
@@ -2586,7 +2614,7 @@ class App {
         });
         this.qwenCall = call;
         try {
-            await call.start(settings);
+            await call.start({ ...settings, ...this.qwenAudioControls?.settings() });
         } catch (error) {
             if (startGeneration !== this._startGeneration) return;
             this._showToast(`Qwen 启动失败：${error.message || error}`, 'error');
@@ -3028,10 +3056,14 @@ class App {
 
     // Save a snapshot first, then drain the provider before finalizing the file.
     async _flushOnExit() {
+        // Restore native audio before waiting for file cleanup or cloud final text.
+        const pause = this.pause().catch(e => console.error('[App] exit flush (pause) failed:', e));
+        const mixSaved = this.qwenAudioControls?.flush();
         this._audioFileStartGeneration = (this._audioFileStartGeneration || 0) + 1;
         try { await this.audioFileTranslation?.dispose(); } catch (e) { console.error('[App] audio file cleanup failed:', e); }
         try { await sessionStore.persist(); } catch (e) { console.error('[App] exit snapshot failed:', e); }
-        try { await this.pause(); } catch (e) { console.error('[App] exit flush (pause) failed:', e); }
+        await pause;
+        await mixSaved;
         try { await sessionStore.endSession(); } catch (e) { console.error('[App] exit flush (endSession) failed:', e); }
     }
 

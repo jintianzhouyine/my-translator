@@ -1,6 +1,7 @@
 // Owns the two independent Qwen directions and their native audio resources.
 // Dependency injection keeps lifecycle and routing testable without microphones or API keys.
 import { validateQwenSettings } from './qwen-settings.js';
+import { readQwenMix, mixSettings } from './qwen-audio-controls.js';
 
 let nextRunId = 0;
 
@@ -11,8 +12,8 @@ export function validateQwenCall(settings) {
 
 export class QwenCallController {
     constructor({ invoke, Channel, createClient, onSegment = () => {}, onProvisional = () => {},
-        onStateChange = () => {}, onError = () => {}, captureDrainTimeoutMs = 1000 }) {
-        Object.assign(this, { invoke, Channel, createClient, onSegment, onProvisional, onStateChange, onError });
+        onStateChange = () => {}, onError = () => {}, onWarning = () => {}, captureDrainTimeoutMs = 1000 }) {
+        Object.assign(this, { invoke, Channel, createClient, onSegment, onProvisional, onStateChange, onError, onWarning });
         this.captureDrainTimeoutMs = captureDrainTimeoutMs;
         this.run = null;
         this.state = 'idle';
@@ -26,6 +27,7 @@ export class QwenCallController {
         const run = {
             id: ++nextRunId, clients: {}, outputId: null, closing: false, failed: false,
             outputTail: Promise.resolve(), queuedAudioBytes: 0, settings: { ...settings },
+            mix: readQwenMix(settings), mixTail: Promise.resolve(), audioGeneration: 0, routeId: null,
         };
         this.run = run;
         this.state = 'connecting';
@@ -49,11 +51,25 @@ export class QwenCallController {
         const duplex = settings.qwen_duplex_enabled !== false;
         try {
             if (duplex) {
+                if (settings.qwen_manage_system_devices !== false) {
+                    const route = await this.invoke('begin_system_audio_route', {
+                        microphoneDevice: settings.qwen_microphone_device || '',
+                        systemDevice: settings.qwen_system_device || '',
+                        outputDevice: settings.qwen_output_device,
+                    });
+                    run.routeId = route.routeId;
+                    // Never re-resolve "default input" after it has become the virtual microphone.
+                    settings.qwen_microphone_device = route.microphoneDevice;
+                    settings.qwen_system_device = route.systemDevice;
+                    this._checkActive(run);
+                }
                 const onError = new this.Channel();
                 onError.onmessage = (message) => this._fail(run, 'outbound', `译音输出失败：${message}`);
                 run.outputId = await this.invoke('start_translation_output', {
-                    deviceId: settings.qwen_output_device, onError,
+                    deviceId: settings.qwen_output_device, onError, mix: { ...run.mix },
                 });
+                this._checkActive(run);
+                await this.setMix(run.mix);
                 this._checkActive(run);
             }
 
@@ -152,6 +168,9 @@ export class QwenCallController {
     }
 
     _enqueueAudio(run, base64) {
+        // Muting also discards chunks already waiting in the JS/native queues.
+        if (!run.mix.translatedEnabled || run.mix.translatedVolume === 0) return;
+        const generation = run.audioGeneration;
         try {
             const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
             if (bytes.length % 2) throw new Error('收到不完整的语音数据。');
@@ -160,7 +179,7 @@ export class QwenCallController {
             if (run.queuedAudioBytes > 24000 * 2 * 5) throw new Error('译音发送积压，请检查输出设备后重新开始。');
             run.outputTail = run.outputTail.then(async () => {
                 try {
-                    if (this.run === run && !run.closing && run.outputId != null) {
+                    if (this.run === run && !run.closing && run.outputId != null && generation === run.audioGeneration) {
                         await this.invoke('write_translation_audio', { outputId: run.outputId, pcm: Array.from(bytes) });
                     }
                 } finally {
@@ -170,6 +189,39 @@ export class QwenCallController {
         } catch (error) {
             this._fail(run, 'outbound', String(error));
         }
+    }
+
+    setMix(mix) {
+        const run = this.run;
+        if (!run || run.closing) return Promise.resolve();
+        const normalized = readQwenMix(mixSettings(mix));
+        if (!normalized.translatedEnabled || normalized.translatedVolume === 0) run.audioGeneration++;
+        run.mix = normalized;
+        const outputId = run.outputId;
+        if (outputId == null) return Promise.resolve();
+        const updating = run.mixTail.then(async () => {
+            if (this.run !== run || run.closing || run.outputId !== outputId) return;
+            await this.invoke('set_translation_mix', { outputId, ...normalized });
+        });
+        run.mixTail = updating.catch(error => this._fail(run, 'outbound', `声音调整失败：${error}`));
+        return updating;
+    }
+
+    async _restoreDevices(run) {
+        if (run.restorePromise) return run.restorePromise;
+        if (run.routeId == null) return;
+        const routeId = run.routeId;
+        run.restorePromise = this.invoke('end_system_audio_route', { routeId }).then(() => {
+            if (run.routeId === routeId) run.routeId = null;
+        }).catch(error => {
+            // The native recovery record is retained for another attempt or next launch.
+            if (!run.restoreWarning) {
+                run.restoreWarning = true;
+                this.onWarning(`恢复系统音频设备失败：${error}。请检查系统声音设置，重新连接原设备后重试。`);
+            }
+        });
+        try { await run.restorePromise; }
+        finally { run.restorePromise = null; }
     }
 
     _fail(run, direction, message) {
@@ -193,6 +245,9 @@ export class QwenCallController {
             ? this.invoke('stop_translation_output', { outputId }).catch(() => {})
             : Promise.resolve();
         await this.invoke('stop_duplex_capture').catch(() => {});
+        await outputStopped;
+        // Do not wait for cloud session.finish before returning the computer's devices.
+        await this._restoreDevices(run);
         if (run.captureStoppedPromise && !run.captureStopped && !run.failed) {
             // A command response can arrive before queued Channel events. The ordered end marker
             // confirms the native tail packets reached sendAudio before disconnect drains its queue.
@@ -207,6 +262,7 @@ export class QwenCallController {
         stopping.push(outputStopped);
         await Promise.allSettled(stopping);
         await run.outputTail;
+        await run.mixTail;
     }
 
     stop() {

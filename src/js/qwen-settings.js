@@ -122,6 +122,8 @@ export class QwenSettingsUI {
             if (element) element.value = value;
         }
         this._element('check-qwen-duplex').checked = settings.qwen_duplex_enabled !== false;
+        const manage = this._element('check-qwen-manage-system-devices');
+        if (manage) manage.checked = settings.qwen_manage_system_devices !== false;
         this._fillLanguages('select-qwen-my-language', QWEN_LANGS, settings.qwen_my_language ?? 'zh');
         this._fillLanguages('select-qwen-peer-language', QWEN_SPEECH_LANGS, settings.qwen_peer_language ?? 'en');
         for (const [field, id] of Object.entries(DEVICE_FIELDS)) {
@@ -200,11 +202,11 @@ export class QwenSettingsUI {
         }
         const selectable = this.devices.supports_system_device_selection === true;
         const system = this._element('qwen-system-device-field');
-        if (system) system.style.display = selectable ? '' : 'none';
+        if (system) system.style.display = '';
         const hint = this._element('qwen-system-device-hint');
         if (hint) hint.textContent = selectable
             ? '这里选择会议软件的扬声器（建议耳机），不能与发给对方的译音输出相同。'
-            : '自动采集系统中播放的会议声音。macOS 会排除本软件自身的译音；请授予系统音频采集权限。';
+            : 'macOS 自动采集会议声音。此处选择耳机或扬声器，供结束通话时恢复播放设备；采集不受此选项影响。';
     }
 
     read({ validateConnection = true } = {}) {
@@ -213,19 +215,19 @@ export class QwenSettingsUI {
             qwen_workspace_id: value('input-qwen-workspace').trim(),
             qwen_region: value('select-qwen-region'),
             qwen_duplex_enabled: this._element('check-qwen-duplex')?.checked !== false,
+            qwen_manage_system_devices: this._element('check-qwen-manage-system-devices')?.checked !== false,
             qwen_my_language: value('select-qwen-my-language'),
             qwen_peer_language: value('select-qwen-peer-language'),
             qwen_microphone_device: value('select-qwen-microphone'),
-            // A saved Windows loopback endpoint does not apply to macOS system capture.
-            qwen_system_device: this.devices?.supports_system_device_selection === false
-                ? '' : value('select-qwen-system-device'),
+            // macOS uses this only to restore playback; capture remains system-wide.
+            qwen_system_device: value('select-qwen-system-device'),
             qwen_output_device: value('select-qwen-output-device'),
             qwen_glossary_outbound: parseQwenGlossary(value('input-qwen-glossary-outbound'), '发给对方的词典'),
             qwen_glossary_inbound: parseQwenGlossary(value('input-qwen-glossary-inbound'), '本机字幕词典'),
         };
         if (validateConnection) {
             validateQwenSettings(settings);
-            if (this.devices?.supports_system_device_selection && settings.qwen_system_device &&
+            if (this.devices && settings.qwen_system_device &&
                 !this.devices.outputs.some(device => device.id === settings.qwen_system_device)) {
                 throw new Error('对方声音所在的播放设备已不可用，请刷新设备并重新选择。');
             }
@@ -241,7 +243,7 @@ export class QwenSettingsUI {
                 if (microphone?.id === output.id) {
                     throw new Error('我的麦克风不能使用译音输出设备，请选择真实麦克风，避免译音被重复翻译。');
                 }
-                if (this.devices.supports_system_device_selection) {
+                if (this.devices.supports_system_device_selection || settings.qwen_manage_system_devices) {
                     const system = settings.qwen_system_device
                         ? this.devices.outputs.find(device => device.id === settings.qwen_system_device)
                         : this.devices.outputs.find(device => device.is_default);

@@ -7,6 +7,8 @@ import { QWEN_LANGS } from '../src/js/qwen-langs.js';
 import { validateQwenCall } from '../src/js/qwen-call.js';
 import { languageName } from '../src/js/locale.js';
 import { QwenSettingsUI as RealQwenSettingsUI } from '../src/js/qwen-settings.js';
+import { hasRememberedEngine } from '../src/js/engine-startup.js';
+import { QwenAudioControls as RealQwenAudioControls, isQwenMixSetting } from '../src/js/qwen-audio-controls.js';
 
 // Exercise the real controller without importing desktop-only dependencies or booting the app.
 const source = readFileSync(new URL('../src/js/app.js', import.meta.url), 'utf8');
@@ -104,7 +106,7 @@ function fixture(initialSettings = {}) {
         },
     };
     const App = vm.runInNewContext(appClass, {
-        settingsManager, document, QWEN_LANGS, validateQwenCall, languageName,
+        settingsManager, document, QWEN_LANGS, validateQwenCall, languageName, hasRememberedEngine, isQwenMixSetting,
         window: { __TAURI__: { core: {} } },
         TranscriptUI: class {
             configure() {}
@@ -114,6 +116,9 @@ function fixture(initialSettings = {}) {
             init() { events.push('qwen-settings:init'); }
             apply(settings) { this.settings = { ...settings }; }
             setVisible(visible) { element('section-qwen-options').style.display = visible ? '' : 'none'; }
+        },
+        QwenAudioControls: class extends RealQwenAudioControls {
+            constructor(options) { super({ ...options, document }); }
         },
         AudioFileTranslation: class {
             constructor() { this.busy = false; this.snapshot = { state: 'ready' }; }
@@ -215,6 +220,7 @@ test('real App.init restores saved Qwen mode before the first settings visit or 
     assert.equal(f.element('section-qwen-options').style.display, '');
     assert.equal(f.app.qwenSettingsUI.settings.qwen_workspace_id, configured.qwen_workspace_id);
     assert.equal(f.pendingSaves.length, 0, 'restoring the UI must not rewrite settings');
+    assert.equal(f.element('engine-picker').style.display, 'none');
     assert.equal(f.started.length, 0, 'restoring the UI must not start a paid session');
 });
 
@@ -229,6 +235,71 @@ test('real App.init keeps legacy controls available when the saved engine is Son
     assert.equal(f.element('check-tts-enabled').disabled, false);
     assert.equal(f.element('section-qwen-options').style.display, 'none');
     assert.equal(f.pendingSaves.length, 0);
+    assert.equal(f.element('engine-picker').style.display, 'none');
+});
+
+const unconfigured = {
+    translation_mode: 'soniox', engine_selection_completed: false,
+    soniox_api_key: '', openai_api_key: '', qwen_api_key: '', qwen_workspace_id: '',
+};
+
+test('only a new unconfigured install shows engine onboarding', async () => {
+    const f = fixture(unconfigured);
+    stubDesktopInitialization(f.app);
+    await f.app.init();
+    assert.equal(f.element('engine-picker').style.display, '');
+    assert.equal(f.pendingSaves.length, 0);
+    assert.equal(f.started.length, 0);
+});
+
+test('choosing an engine persists onboarding completion and skips it on the next launch without a key', async () => {
+    const f = fixture(unconfigured);
+    f.app._maybeShowEnginePicker();
+    const switching = f.app._selectEngineClass('standard');
+    assert.equal(f.element('engine-picker').style.display, '', 'keep onboarding visible until its choice is saved');
+    assert.deepEqual(f.pendingSaves[0].patch, { translation_mode: 'soniox', engine_selection_completed: true });
+    f.pendingSaves[0].resolve();
+    await switching;
+    assert.equal(f.element('engine-picker').style.display, 'none');
+    const restarted = fixture(f.saved());
+    stubDesktopInitialization(restarted.app);
+    await restarted.app.init();
+    assert.equal(restarted.element('engine-picker').style.display, 'none');
+    assert.equal(restarted.pendingSaves.length, 0);
+    await restarted.app.start();
+    assert.equal(restarted.started.length, 0, 'remembering a choice does not bypass missing-key validation');
+    assert.match(restarted.toasts.at(-1).message, /Soniox API/);
+});
+
+test('legacy engine configuration skips onboarding without rewriting stored settings', async () => {
+    for (const previous of [
+        { translation_mode: 'qwen' },
+        { translation_mode: 'openai' },
+        { translation_mode: 'local' },
+        { soniox_api_key: 'existing-key' },
+        { qwen_workspace_id: 'existing-workspace' },
+    ]) {
+        const f = fixture({ ...unconfigured, engine_selection_completed: undefined, ...previous });
+        stubDesktopInitialization(f.app);
+        await f.app.init();
+        assert.equal(f.element('engine-picker').style.display, 'none', JSON.stringify(previous));
+        assert.equal(f.pendingSaves.length, 0);
+    }
+});
+
+test('failed first engine selection keeps onboarding visible and does not remember an unsaved choice', async () => {
+    const f = fixture(unconfigured);
+    f.app._maybeShowEnginePicker();
+    const switching = f.app._selectEngineClass('qwen');
+    f.pendingSaves[0].reject(new Error('disk full'));
+    assert.equal(await switching, false);
+    assert.equal(f.element('engine-picker').style.display, '');
+    assert.equal(f.saved().engine_selection_completed, false);
+    assert.equal(f.saved().translation_mode, 'soniox');
+    assert.match(f.toasts.at(-1).message, /无法保存引擎设置.*disk full/);
+    const restarted = fixture(f.saved());
+    restarted.app._maybeShowEnginePicker();
+    assert.equal(restarted.element('engine-picker').style.display, '');
 });
 
 test('leaving settings cancels an in-flight glossary read before it can reopen the preview or replace hidden fields', async () => {
@@ -381,6 +452,59 @@ test('saving a running Qwen configuration waits for pause and reports a failed s
     assert.equal(f.toasts.length, 1);
     assert.equal(f.toasts[0].type, 'error');
     assert.match(f.toasts[0].message, /保存失败.*disk full/);
+});
+
+test('editing a managed live call pins its physical devices even after the system default becomes virtual', async () => {
+    const f = fixture({ translation_mode: 'qwen', qwen_manage_system_devices: true,
+        qwen_microphone_device: '', qwen_system_device: '' });
+    f.app.isRunning = true;
+    f.app.qwenCall = { run: { routeId: 'active-route', closing: false, settings: {
+        ...f.saved(), qwen_microphone_device: 'Physical mic', qwen_system_device: 'Headphones',
+    } } };
+    f.app.qwenSettingsUI = new RealQwenSettingsUI({ document: f.document, invoke: async () => ({
+        inputs: [
+            { id: 'Physical mic', name: 'Physical mic', is_default: false },
+            { id: 'virtual-output', name: 'BlackHole 2ch', is_default: true },
+        ],
+        outputs: [
+            { id: 'Headphones', name: 'Headphones', is_default: true },
+            { id: 'virtual-output', name: 'BlackHole 2ch', is_default: false },
+        ],
+        supports_system_device_selection: false,
+    }) });
+    f.app._refreshKeyStatus = () => {};
+    f.app._updateTTSProviderUI = () => {};
+    f.app._populateSettingsForm();
+    await f.app.qwenSettingsUI.refreshDevices();
+    assert.equal(f.element('select-qwen-microphone').value, 'Physical mic');
+    assert.equal(f.element('select-qwen-system-device').value, 'Headphones');
+    assert.equal(f.saved().qwen_microphone_device, '', 'opening a form does not persist changes');
+    f.app.pause = async () => { f.events.push('qwen:pause'); };
+    const saving = f.app._saveSettingsFromForm();
+    await nextTurn();
+    assert.ok(f.events.includes('qwen:pause'), 'validation accepts the pinned physical route');
+    assert.equal(f.pendingSaves.length, 1);
+    assert.equal(f.pendingSaves[0].patch.qwen_microphone_device, 'Physical mic');
+    assert.equal(f.pendingSaves[0].patch.qwen_system_device, 'Headphones');
+    f.pendingSaves[0].resolve();
+    await saving;
+    assert.equal(f.saved().qwen_microphone_device, 'Physical mic');
+});
+
+test('opening settings without an active managed route preserves default device choices', () => {
+    for (const run of [null, { routeId: null }, { routeId: 'stopping-route', closing: true },
+        { routeId: 'manual-route', settings: { qwen_manage_system_devices: false } }]) {
+        const f = fixture({ translation_mode: 'qwen', qwen_microphone_device: '', qwen_system_device: '' });
+        f.app.qwenCall = { run };
+        let applied;
+        f.app.qwenSettingsUI.apply = settings => { applied = settings; };
+        f.app._refreshKeyStatus = () => {};
+        f.app._updateTTSProviderUI = () => {};
+        f.app._populateSettingsForm();
+        assert.equal(applied.qwen_microphone_device, '');
+        assert.equal(applied.qwen_system_device, '');
+        assert.equal(f.pendingSaves.length, 0);
+    }
 });
 
 

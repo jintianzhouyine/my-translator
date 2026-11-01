@@ -17,6 +17,11 @@ const DEFAULT_SETTINGS = {
   qwen_microphone_device: '',
   qwen_system_device: '',
   qwen_output_device: '',
+  qwen_manage_system_devices: true,
+  qwen_original_enabled: false,
+  qwen_original_volume: 1,
+  qwen_translated_enabled: true,
+  qwen_translated_volume: 1,
   qwen_glossary_outbound: {},
   qwen_glossary_inbound: {},
   source_language: 'auto',
@@ -32,6 +37,7 @@ const DEFAULT_SETTINGS = {
   max_lines: 5,
   show_original: true,
   translation_mode: 'soniox',
+  engine_selection_completed: false,
   custom_context: null,
   elevenlabs_api_key: '',
   tts_enabled: false,
@@ -64,6 +70,7 @@ class SettingsManager {
   constructor() {
     this.settings = { ...DEFAULT_SETTINGS };
     this._listeners = [];
+    this._saveTail = Promise.resolve();
   }
 
   /**
@@ -84,17 +91,20 @@ class SettingsManager {
   /**
    * Save settings to Rust backend
    */
-  async save(newSettings) {
-    try {
-      const merged = { ...this.settings, ...newSettings };
+  save(newSettings) {
+    const patch = { ...newSettings };
+    const saving = this._saveTail.then(async () => {
+      // Merge only when this write starts, so simultaneous volume/engine changes survive.
+      const merged = { ...this.settings, ...patch };
       await invoke('save_settings', { newSettings: merged });
       this.settings = merged;
       this._notify();
       return true;
-    } catch (err) {
+    });
+    this._saveTail = saving.catch(err => {
       console.error('Failed to save settings:', err);
-      throw err;
-    }
+    });
+    return saving;
   }
 
   /**

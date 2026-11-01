@@ -66,31 +66,49 @@
     <!-- Transcript Area (Live activity panel) -->
     <div id="transcript-container" class="activity-panel active" data-activity="live" data-tauri-drag-region>
       <!-- Live status row: engine · state · languages · audio source -->
-      <div class="live-status-row">
-        <div class="engine-pill" id="engine-pill" title="点击切换翻译引擎">
-          <button class="engine-pill-btn active" data-engine-class="standard" type="button">
-            <span class="engine-pill-icon">☁️</span>
-            <span class="engine-pill-label">标准模式</span>
-          </button>
-          <button class="engine-pill-btn" data-engine-class="openai" type="button">
-            <span class="engine-pill-icon">⚡</span>
-            <span class="engine-pill-label">OpenAI</span>
-          </button>
-          <button class="engine-pill-btn" data-engine-class="qwen" type="button">
-            <span class="engine-pill-icon">🌏</span>
-            <span class="engine-pill-label">Qwen</span>
-          </button>
+      <div class="live-top-row">
+        <div class="live-status-row">
+          <div class="engine-pill" id="engine-pill" title="点击切换翻译引擎">
+            <button class="engine-pill-btn active" data-engine-class="standard" type="button">
+              <span class="engine-pill-icon">☁️</span>
+              <span class="engine-pill-label">标准模式</span>
+            </button>
+            <button class="engine-pill-btn" data-engine-class="openai" type="button">
+              <span class="engine-pill-icon">⚡</span>
+              <span class="engine-pill-label">OpenAI</span>
+            </button>
+            <button class="engine-pill-btn" data-engine-class="qwen" type="button">
+              <span class="engine-pill-icon">🌏</span>
+              <span class="engine-pill-label">Qwen</span>
+            </button>
+          </div>
+          <div class="status-area">
+            <span id="status-indicator" class="status-dot disconnected"></span>
+            <span id="status-text" class="status-text">就绪</span>
+          </div>
+          <span id="live-lang" class="live-lang" title="翻译语言（可在设置中更改）"></span>
+          <select id="select-audio-source" class="source-select" title="音频来源（⌘1/2/3）">
+            <option value="system">🔊 系统声音</option>
+            <option value="microphone">🎤 麦克风</option>
+            <option value="both">🔊+🎤 两者</option>
+          </select>
         </div>
-        <div class="status-area">
-          <span id="status-indicator" class="status-dot disconnected"></span>
-          <span id="status-text" class="status-text">就绪</span>
-        </div>
-        <span id="live-lang" class="live-lang" title="翻译语言（可在设置中更改）"></span>
-        <select id="select-audio-source" class="source-select" title="音频来源（⌘1/2/3）">
-          <option value="system">🔊 系统声音</option>
-          <option value="microphone">🎤 麦克风</option>
-          <option value="both">🔊+🎤 两者</option>
-        </select>
+        <section id="qwen-audio-controls" class="qwen-audio-controls" aria-label="发给对方的声音" hidden>
+          <div class="qwen-mix-row">
+            <span class="qwen-mix-title">发给对方</span>
+            <div class="qwen-mix-source">
+              <label class="qwen-mix-toggle"><input type="checkbox" id="check-qwen-original" role="switch" /> 原声</label>
+              <input type="range" id="range-qwen-original" min="0" max="100" step="1" value="100" aria-label="原声音量" />
+              <output id="value-qwen-original" for="range-qwen-original">100%</output>
+            </div>
+            <div class="qwen-mix-source">
+              <label class="qwen-mix-toggle"><input type="checkbox" id="check-qwen-translated" role="switch" checked /> 译音</label>
+              <input type="range" id="range-qwen-translated" min="0" max="100" step="1" value="100" aria-label="译音音量" />
+              <output id="value-qwen-translated" for="range-qwen-translated">100%</output>
+            </div>
+          </div>
+          <p id="qwen-mix-status" class="qwen-mix-status" role="status">将翻译后的语音发给对方。</p>
+        </section>
       </div>
 
       <div id="transcript-content" data-tauri-drag-region>
@@ -105,7 +123,6 @@
           <p>点击 ▶ 开始翻译</p>
         </div>
       </div>
-
       <!-- Live action row: primary start/stop + pause + TTS + overflow menu -->
       <div class="live-action-row">
         <button id="btn-start" class="primary-action-btn" title="开始／停止（⌘↩）">
@@ -175,7 +192,7 @@
         </div>
       </div>
 
-      <!-- Engine picker — shown before the first session each launch. -->
+      <!-- Engine picker — shown only until an engine has been chosen. -->
       <div id="engine-picker" class="engine-picker" style="display:none">
         <p class="engine-picker-title">选择翻译模式</p>
         <div class="engine-cards">
@@ -538,16 +555,21 @@
               <select id="select-qwen-microphone"><option value="">系统默认麦克风</option></select>
             </div>
             <div class="field" id="qwen-system-device-field" style="margin-top:10px">
-              <label class="field-label" for="select-qwen-system-device">对方声音所在的播放设备</label>
+              <label class="field-label" for="select-qwen-system-device">会议播放／恢复设备</label>
               <select id="select-qwen-system-device"><option value="">系统默认播放设备</option></select>
             </div>
             <p class="hint" id="qwen-system-device-hint">采集会议软件播放的声音，用于生成本机字幕。</p>
             <div class="field" data-qwen-duplex-field style="margin-top:10px">
               <label class="field-label" for="select-qwen-output-device">发给对方的译音输出</label>
               <select id="select-qwen-output-device"><option value="">请选择虚拟音频设备…</option></select>
-              <p class="hint">选择已安装的虚拟设备；在会议软件中，将它对应的输入设备设为麦克风。会议扬声器使用耳机，不要使用这个虚拟设备。</p>
+              <p class="hint">开启下方自动切换后，会议软件使用系统默认麦克风即可；关闭时需手动选择对应输入。会议扬声器使用耳机。</p>
             </div>
             <p class="hint" id="qwen-device-status" role="status" aria-live="polite"></p>
+            <label class="checkbox-label" data-qwen-duplex-field>
+              <input type="checkbox" id="check-qwen-manage-system-devices" checked />
+              通话时设为系统默认麦克风，结束后恢复音频设备
+            </label>
+            <p class="hint" data-qwen-duplex-field>其他软件使用系统默认麦克风即可接收译音。停止、暂停或退出时恢复原来的麦克风和播放设备；“我的麦克风”请选真实设备。</p>
             <p class="hint" data-qwen-duplex-field>本软件不会自动安装虚拟音频驱动。请使用耳机，避免外放声音再次进入麦克风。</p>
           </div>
 

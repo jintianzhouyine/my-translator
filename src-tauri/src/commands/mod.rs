@@ -12,5 +12,6 @@ pub mod qwen_realtime;
 pub mod routed_audio;
 pub mod session_store;
 pub mod settings;
+pub mod system_audio_route;
 pub mod tiktok_tts;
 pub mod transcript;

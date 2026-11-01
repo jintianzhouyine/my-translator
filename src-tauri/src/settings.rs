@@ -47,6 +47,11 @@ pub struct Settings {
     pub qwen_microphone_device: String,
     pub qwen_system_device: String,
     pub qwen_output_device: String,
+    pub qwen_manage_system_devices: bool,
+    pub qwen_original_enabled: bool,
+    pub qwen_original_volume: f64,
+    pub qwen_translated_enabled: bool,
+    pub qwen_translated_volume: f64,
     pub qwen_glossary_outbound: BTreeMap<String, String>,
     pub qwen_glossary_inbound: BTreeMap<String, String>,
     /// Source language: "auto" or ISO 639-1 code
@@ -70,6 +75,7 @@ pub struct Settings {
     pub show_original: bool,
     /// Translation mode: "soniox" | "local" | "openai" | "qwen"
     pub translation_mode: String,
+    pub engine_selection_completed: bool,
     /// Optional custom context for better transcription
     pub custom_context: Option<CustomContext>,
     /// ElevenLabs API key for TTS narration
@@ -143,6 +149,11 @@ impl Default for Settings {
             qwen_microphone_device: String::new(),
             qwen_system_device: String::new(),
             qwen_output_device: String::new(),
+            qwen_manage_system_devices: true,
+            qwen_original_enabled: false,
+            qwen_original_volume: 1.0,
+            qwen_translated_enabled: true,
+            qwen_translated_volume: 1.0,
             qwen_glossary_outbound: BTreeMap::new(),
             qwen_glossary_inbound: BTreeMap::new(),
             source_language: "auto".to_string(),
@@ -158,6 +169,7 @@ impl Default for Settings {
             max_lines: 5,
             show_original: true,
             translation_mode: "soniox".to_string(),
+            engine_selection_completed: false,
             custom_context: None,
             elevenlabs_api_key: String::new(),
             tts_enabled: false,
@@ -253,6 +265,12 @@ mod tests {
         assert_eq!(settings.qwen_my_language, "zh");
         assert!(settings.qwen_output_device.is_empty());
         assert!(settings.qwen_glossary_outbound.is_empty());
+        assert!(settings.qwen_manage_system_devices);
+        assert!(!settings.qwen_original_enabled);
+        assert!(settings.qwen_translated_enabled);
+        assert_eq!(settings.qwen_original_volume, 1.0);
+        assert_eq!(settings.qwen_translated_volume, 1.0);
+        assert!(!settings.engine_selection_completed);
     }
 
     #[test]
@@ -266,6 +284,12 @@ mod tests {
             "qwen_microphone_device": "microphone-id",
             "qwen_system_device": "headphones-id",
             "qwen_output_device": "virtual-id",
+            "qwen_manage_system_devices": false,
+            "qwen_original_enabled": true,
+            "qwen_original_volume": 0.35,
+            "qwen_translated_enabled": false,
+            "qwen_translated_volume": 0.75,
+            "engine_selection_completed": true,
             "qwen_glossary_outbound": {"产品名": "ProductName"},
             "qwen_glossary_inbound": {"ProductName": "产品名"},
             "translation_type": "two_way",

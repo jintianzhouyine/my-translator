@@ -5,6 +5,7 @@ import { QwenCallController, validateQwenCall } from '../src/js/qwen-call.js';
 const settings = {
     qwen_api_key: 'test-key', qwen_workspace_id: 'workspace-test', qwen_region: 'cn-beijing',
     qwen_duplex_enabled: true, qwen_my_language: 'zh', qwen_peer_language: 'en',
+    qwen_manage_system_devices: false,
     qwen_output_device: 'Virtual Cable', qwen_microphone_device: 'Mic', qwen_system_device: 'Headphones',
     qwen_glossary_outbound: { 测试: 'test' }, qwen_glossary_inbound: { test: '测试' },
 };
@@ -16,7 +17,7 @@ const deferred = () => {
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25 } = {}) {
-    const calls = [], clients = [], segments = [], errors = [], statuses = [];
+    const calls = [], clients = [], segments = [], errors = [], statuses = [], warnings = [];
     let capture;
     const controller = new QwenCallController({
         invoke: async (name, args) => {
@@ -27,6 +28,7 @@ function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25 } = {}) {
                 if (result !== undefined) return result;
             }
             if (name === 'start_translation_output') return 17;
+            if (name === 'begin_system_audio_route') return { routeId: 'route-1', microphoneDevice: 'Physical mic', systemDevice: 'Physical headphones' };
             if (name === 'stop_duplex_capture') capture?.onmessage({ type: 'stopped' });
         },
         captureDrainTimeoutMs,
@@ -44,8 +46,9 @@ function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25 } = {}) {
         onSegment: (...args) => segments.push(args),
         onError: (...args) => errors.push(args),
         onStateChange: state => statuses.push(state),
+        onWarning: message => warnings.push(message),
     });
-    return { controller, calls, clients, segments, errors, statuses, capture: () => capture };
+    return { controller, calls, clients, segments, errors, statuses, warnings, capture: () => capture };
 }
 
 test('independent directions use different languages/glossaries and only outgoing audio is played', async () => {
@@ -271,4 +274,109 @@ test('stop clears native playback before waiting for capture shutdown and its ta
     await stopping;
     assert.deepEqual(f.clients[1].packets, [[1, 2]]);
     assert.equal(f.calls.some(c => c.name === 'write_translation_audio'), false);
+});
+
+test('system routing pins physical capture devices and restores before waiting for cloud drain', async () => {
+    const disconnecting = deferred();
+    const f = fixture();
+    await f.controller.start({ ...settings, qwen_manage_system_devices: true, qwen_microphone_device: '' });
+    const capture = f.calls.find(c => c.name === 'start_duplex_capture').args;
+    assert.equal(capture.microphoneDevice, 'Physical mic');
+    assert.equal(capture.systemDevice, 'Physical headphones');
+    f.clients[0].disconnect = () => disconnecting.promise;
+    const stopping = f.controller.stop();
+    await tick();
+    assert.ok(f.calls.some(c => c.name === 'end_system_audio_route' && c.args.routeId === 'route-1'));
+    assert.equal(f.controller.state, 'stopping');
+    disconnecting.resolve();
+    await stopping;
+    assert.equal(f.calls.filter(c => c.name === 'end_system_audio_route').length, 1);
+});
+
+test('failed connection restores the system devices and caption-only mode never changes defaults', async () => {
+    const f = fixture({ connect: async () => { throw new Error('bad key'); } });
+    await assert.rejects(f.controller.start({ ...settings, qwen_manage_system_devices: true }), /bad key/);
+    assert.ok(f.calls.some(c => c.name === 'end_system_audio_route'));
+    const g = fixture();
+    await g.controller.start({ ...settings, qwen_manage_system_devices: true, qwen_duplex_enabled: false });
+    assert.equal(g.calls.some(c => c.name === 'begin_system_audio_route'), false);
+    await g.controller.stop();
+});
+
+test('cancelling during default-device switching restores a late native route', async () => {
+    const pending = deferred();
+    const f = fixture({ customInvoke: name => name === 'begin_system_audio_route' ? pending.promise : undefined });
+    const starting = f.controller.start({ ...settings, qwen_manage_system_devices: true });
+    const rejected = assert.rejects(starting, /取消/);
+    const stopping = f.controller.stop();
+    pending.resolve({ routeId: 'late-route', microphoneDevice: 'Physical', systemDevice: 'Headphones' });
+    await Promise.all([rejected, stopping]);
+    assert.ok(f.calls.some(c => c.name === 'end_system_audio_route' && c.args.routeId === 'late-route'));
+    assert.equal(f.calls.some(c => c.name === 'start_translation_output'), false);
+    assert.equal(f.controller.run, null);
+});
+
+test('restore errors are reported once and retried without stranding the call', async () => {
+    let attempts = 0;
+    const f = fixture({ customInvoke: name => {
+        if (name === 'end_system_audio_route' && ++attempts === 1) return Promise.reject('device unplugged');
+    } });
+    await f.controller.start({ ...settings, qwen_manage_system_devices: true });
+    await f.controller.stop();
+    assert.equal(attempts, 2);
+    assert.equal(f.warnings.length, 1);
+    assert.match(f.warnings[0], /device unplugged/);
+    assert.equal(f.controller.run, null);
+});
+
+test('original/translated controls are independent and muting does not stop source recognition', async () => {
+    const f = fixture();
+    await f.controller.start({ ...settings, qwen_original_enabled: true, qwen_translated_enabled: false,
+        qwen_original_volume: 0.4, qwen_translated_volume: 0.7 });
+    assert.deepEqual(f.calls.find(c => c.name === 'start_translation_output').args.mix,
+        { originalEnabled: true, originalVolume: 0.4, translatedEnabled: false, translatedVolume: 0.7 });
+    f.clients[1].onAudioChunk('AQI=');
+    f.capture().onmessage({ type: 'audio', source: 'microphone', pcm: [1, 2] });
+    await tick();
+    assert.equal(f.calls.some(c => c.name === 'write_translation_audio'), false);
+    assert.deepEqual(f.clients[1].packets, [[1, 2]]);
+    await f.controller.setMix({ originalEnabled: false, originalVolume: 0.4, translatedEnabled: true, translatedVolume: 0.7 });
+    f.clients[1].onAudioChunk('AwQ=');
+    await tick();
+    assert.deepEqual(f.calls.filter(c => c.name === 'write_translation_audio').map(c => c.args.pcm), [[3, 4]]);
+    await f.controller.stop();
+});
+
+test('mute/unmute discards translated chunks already waiting in the IPC queue', async () => {
+    const writing = deferred();
+    let writes = 0;
+    const f = fixture({ customInvoke: name => name === 'write_translation_audio' && ++writes === 1 ? writing.promise : undefined });
+    await f.controller.start(settings);
+    f.clients[1].onAudioChunk('AQI=');
+    await tick();
+    f.clients[1].onAudioChunk('AwQ=');
+    await f.controller.setMix({ originalEnabled: false, originalVolume: 1, translatedEnabled: false, translatedVolume: 1 });
+    await f.controller.setMix({ originalEnabled: false, originalVolume: 1, translatedEnabled: true, translatedVolume: 1 });
+    writing.resolve();
+    await tick();
+    assert.equal(writes, 1, 'buffered speech from before mute must not resume');
+    f.clients[1].onAudioChunk('BQY=');
+    await tick();
+    assert.equal(writes, 2);
+    await f.controller.stop();
+});
+
+test('mix changes during native output startup are applied before capture', async () => {
+    const opening = deferred();
+    const f = fixture({ customInvoke: name => name === 'start_translation_output' ? opening.promise : undefined });
+    const starting = f.controller.start(settings);
+    await f.controller.setMix({ originalEnabled: true, originalVolume: 0.25, translatedEnabled: false, translatedVolume: 1 });
+    opening.resolve(32);
+    await starting;
+    const update = f.calls.find(c => c.name === 'set_translation_mix');
+    assert.equal(update.args.outputId, 32);
+    assert.equal(update.args.originalVolume, 0.25);
+    assert.equal(update.args.translatedEnabled, false);
+    assert.ok(f.calls.indexOf(update) < f.calls.findIndex(c => c.name === 'start_duplex_capture'));
+    await f.controller.stop();
 });

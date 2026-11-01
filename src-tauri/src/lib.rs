@@ -12,6 +12,7 @@ use commands::qwen_realtime::QwenState;
 use settings::{Settings, SettingsState};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use tauri::Manager;
 
 // Set once the frontend has flushed the session (or the exit deadline elapsed),
 // so the ExitRequested handler stops preventing exit and the app can quit.
@@ -56,9 +57,25 @@ fn is_apple_silicon_hardware() -> bool {
 // Called by the frontend after it has flushed the session on exit. Force-exits
 // the process; the flag keeps a subsequent ExitRequested from being prevented.
 #[tauri::command]
-fn exit_app(app: tauri::AppHandle) {
+async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || restore_audio_on_exit(&handle))
+        .await
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = &result {
+        eprintln!("[audio restore] {error}");
+    }
     EXIT_ALLOWED.store(true, Ordering::SeqCst);
     app.exit(0);
+    result
+}
+
+fn restore_audio_on_exit(app: &tauri::AppHandle) -> Result<(), String> {
+    if let Some(state) = app.try_state::<audio::system_devices::SystemAudioRouteState>() {
+        state.restore_all()
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -77,6 +94,9 @@ pub fn run() {
             commands::audio_file_source::serve_audio_source(&state, request)
         })
         .setup(|_app| {
+            _app.manage(audio::system_devices::SystemAudioRouteState::new(
+                _app.path().app_data_dir()?,
+            ));
             // Dev builds (compiled with the `devtools` feature): auto-open the WebView
             // inspector so JS/console errors are visible. Never compiled into release.
             #[cfg(feature = "devtools")]
@@ -113,7 +133,11 @@ pub fn run() {
             commands::routed_audio::stop_duplex_capture,
             commands::routed_audio::start_translation_output,
             commands::routed_audio::write_translation_audio,
+            commands::routed_audio::set_translation_mix,
             commands::routed_audio::stop_translation_output,
+            commands::system_audio_route::begin_system_audio_route,
+            commands::system_audio_route::end_system_audio_route,
+            commands::system_audio_route::recover_system_audio_route,
             commands::audio_file_export::export_audio_file_text,
             commands::audio_file_source::audio_file_open_source,
             commands::audio_file_source::audio_file_prepare_part,
@@ -164,7 +188,7 @@ pub fn run() {
             // window's onCloseRequested). Prevent the first exit, ask the
             // frontend to flush the session, and force-exit after a deadline so
             // a hung flush can never make the app unquittable.
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            if let tauri::RunEvent::ExitRequested { ref api, .. } = event {
                 if !EXIT_ALLOWED.load(Ordering::SeqCst) {
                     use tauri::{Emitter, Manager};
                     api.prevent_exit();
@@ -174,9 +198,18 @@ pub fn run() {
                     let handle = app_handle.clone();
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_secs(3));
+                        if let Err(error) = restore_audio_on_exit(&handle) {
+                            eprintln!("[audio restore] {error}");
+                        }
                         EXIT_ALLOWED.store(true, Ordering::SeqCst);
                         handle.exit(0);
                     });
+                }
+            }
+            // Covers the native window-destroy fallback when the WebView cannot finish cleanup.
+            if let tauri::RunEvent::Exit = event {
+                if let Err(error) = restore_audio_on_exit(app_handle) {
+                    eprintln!("[audio restore] {error}");
                 }
             }
         });

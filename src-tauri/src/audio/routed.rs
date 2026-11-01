@@ -10,10 +10,13 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use tauri::ipc::Channel;
 
+#[path = "routed_mixer.rs"]
+mod mixer;
+pub use mixer::MixSettings;
+use mixer::PlaybackMixer;
+
 const INPUT_RATE: u32 = 16_000;
-const OUTPUT_RATE: u32 = 24_000;
 const CAPTURE_BATCH_BYTES: usize = 3_200; // 100 ms, mono PCM16
-const MAX_OUTPUT_SAMPLES: usize = OUTPUT_RATE as usize * 5;
 
 #[derive(Clone, Serialize)]
 pub struct AudioDeviceInfo {
@@ -62,7 +65,7 @@ struct OutputHandle {
     id: u64,
     device_id: String,
     stop: Arc<AtomicBool>,
-    queue: Arc<Mutex<PlaybackQueue>>,
+    queue: Arc<Mutex<PlaybackMixer>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -70,7 +73,7 @@ impl Drop for OutputHandle {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Ok(mut queue) = self.queue.lock() {
-            queue.samples.clear();
+            queue.clear();
         }
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
@@ -103,17 +106,22 @@ impl RoutedAudioState {
         on_audio: Channel<CaptureEvent>,
     ) -> Result<(), String> {
         self.stop_capture();
-        #[cfg(not(target_os = "windows"))]
-        if !system_device.is_empty() {
-            return Err("此平台通过系统声音采集，不支持选择回环输出设备".into());
-        }
+        // macOS uses ScreenCaptureKit for all system audio. Its selected playback
+        // device is only for restoring the user's system route, not a loopback ID.
+        let system_device = capture_system_device(system_device);
 
         let active_output = self
             .output
             .lock()
             .map_err(|e| e.to_string())?
             .as_ref()
-            .map(|output| output.device_id.clone());
+            .map(|output| {
+                (
+                    output.device_id.clone(),
+                    output.queue.clone(),
+                    output.stop.clone(),
+                )
+            });
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = stop.clone();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
@@ -122,7 +130,13 @@ impl RoutedAudioState {
                 &microphone_device,
                 &system_device,
                 capture_microphone,
-                active_output.as_deref(),
+                active_output.as_ref().map(|(id, _, _)| id.as_str()),
+                active_output
+                    .as_ref()
+                    .map(|(_, queue, stop)| OriginalOutput {
+                        queue: queue.clone(),
+                        stop: stop.clone(),
+                    }),
                 worker_stop.clone(),
                 &on_audio,
                 &ready_tx,
@@ -167,6 +181,7 @@ impl RoutedAudioState {
         &self,
         device_id: String,
         on_error: Channel<String>,
+        mix: MixSettings,
     ) -> Result<u64, String> {
         if device_id.trim().is_empty() {
             return Err("请选择译音输出设备（虚拟麦克风对应的播放端）".into());
@@ -184,7 +199,7 @@ impl RoutedAudioState {
         *output = None;
         let id = self.next_output_id.fetch_add(1, Ordering::Relaxed) + 1;
         let stop = Arc::new(AtomicBool::new(false));
-        let queue = Arc::new(Mutex::new(PlaybackQueue::new(OUTPUT_RATE)));
+        let queue = Arc::new(Mutex::new(PlaybackMixer::new(mix)?));
         let worker_stop = stop.clone();
         let worker_queue = queue.clone();
         let selected_device = device_id.clone();
@@ -234,12 +249,22 @@ impl RoutedAudioState {
             .filter(|output| output.id == id && !output.stop.load(Ordering::Acquire))
             .ok_or_else(|| "译音输出已停止或会话已失效".to_string())?;
         let mut queue = output.queue.lock().map_err(|e| e.to_string())?;
-        if let Err(error) = queue.push_pcm(pcm) {
-            queue.samples.clear();
+        if let Err(error) = queue.push_translated(pcm) {
+            queue.clear();
             output.stop.store(true, Ordering::Release);
             return Err(error);
         }
         Ok(())
+    }
+
+    pub fn set_mix(&self, id: u64, mix: MixSettings) -> Result<(), String> {
+        let output = self.output.lock().map_err(|e| e.to_string())?;
+        let output = output
+            .as_ref()
+            .filter(|output| output.id == id && !output.stop.load(Ordering::Acquire))
+            .ok_or_else(|| "译音输出已停止或会话已失效".to_string())?;
+        let result = output.queue.lock().map_err(|e| e.to_string())?.set_mix(mix);
+        result
     }
 
     pub fn stop_output(&self, id: u64) -> Result<(), String> {
@@ -336,9 +361,36 @@ fn validate_microphone(microphone: Option<&str>, output: Option<&str>) -> Result
     Ok(())
 }
 
+fn capture_system_device(selected: String) -> String {
+    if cfg!(target_os = "windows") {
+        selected
+    } else {
+        String::new()
+    }
+}
+
 enum NativeInput {
     Pcm(&'static str, Vec<u8>),
     Error(&'static str, String),
+}
+
+// Captured original audio only goes to the currently owned playback stream.
+// A stale capture worker cannot refill a queue after Stop or after a new output starts.
+struct OriginalOutput {
+    queue: Arc<Mutex<PlaybackMixer>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl OriginalOutput {
+    fn push(&self, pcm: &[u8]) -> Result<(), String> {
+        if !self.stop.load(Ordering::Acquire) {
+            let mut queue = self.queue.lock().map_err(|e| e.to_string())?;
+            if !self.stop.load(Ordering::Acquire) {
+                queue.push_original(pcm)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn capture_worker(
@@ -346,6 +398,7 @@ fn capture_worker(
     system_id: &str,
     capture_microphone: bool,
     output_id: Option<&str>,
+    original_output: Option<OriginalOutput>,
     stop: Arc<AtomicBool>,
     on_audio: &Channel<CaptureEvent>,
     ready: &mpsc::SyncSender<Result<CaptureRoute, String>>,
@@ -418,6 +471,12 @@ fn capture_worker(
             }
             match rx.recv_timeout(Duration::from_millis(10)) {
                 Ok(NativeInput::Pcm(source, pcm)) => {
+                    if source == "microphone" {
+                        if let Some(output) = &original_output {
+                            output.push(&pcm)?;
+                        }
+                    }
+                    // Original output controls never affect the separate ASR stream.
                     forward_pcm(source, pcm, &mut buffers, on_audio)?
                 }
                 Ok(NativeInput::Error(source, error)) => {
@@ -645,53 +704,9 @@ impl LinearResampler {
     }
 }
 
-struct PlaybackQueue {
-    samples: VecDeque<f32>,
-    phase: f64,
-    device_rate: u32,
-}
-
-impl PlaybackQueue {
-    fn new(device_rate: u32) -> Self {
-        Self {
-            samples: VecDeque::new(),
-            phase: 0.0,
-            device_rate,
-        }
-    }
-    fn push_pcm(&mut self, pcm: &[u8]) -> Result<(), String> {
-        if pcm.len() % 2 != 0 {
-            return Err("译音 PCM 数据长度无效".into());
-        }
-        if self.samples.len() + pcm.len() / 2 > MAX_OUTPUT_SAMPLES {
-            return Err(
-                "译音播放积压超过 5 秒，已停止。请检查输出设备或降低讲话速度后重试。".into(),
-            );
-        }
-        self.samples.extend(
-            pcm.chunks_exact(2)
-                .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0),
-        );
-        Ok(())
-    }
-    fn next_sample(&mut self) -> f32 {
-        let index = self.phase.floor() as usize;
-        if index + 1 >= self.samples.len() {
-            return 0.0;
-        }
-        let fraction = (self.phase - index as f64) as f32;
-        let sample = self.samples[index] * (1.0 - fraction) + self.samples[index + 1] * fraction;
-        self.phase += OUTPUT_RATE as f64 / self.device_rate as f64;
-        let consumed = (self.phase.floor() as usize).min(self.samples.len() - 1);
-        self.samples.drain(..consumed);
-        self.phase -= consumed as f64;
-        sample
-    }
-}
-
 fn output_worker(
     device_id: &str,
-    queue: Arc<Mutex<PlaybackQueue>>,
+    queue: Arc<Mutex<PlaybackMixer>>,
     stop: Arc<AtomicBool>,
     on_error: Channel<String>,
     ready: &mpsc::SyncSender<Result<(), String>>,
@@ -704,7 +719,10 @@ fn output_worker(
     if config.channels == 0 || config.sample_rate.0 == 0 {
         return Err("译音设备返回了无效格式".into());
     }
-    queue.lock().map_err(|e| e.to_string())?.device_rate = config.sample_rate.0;
+    queue
+        .lock()
+        .map_err(|e| e.to_string())?
+        .set_device_rate(config.sample_rate.0);
     let error_stop = stop.clone();
     let error = move |error: cpal::StreamError| {
         error_stop.store(true, Ordering::Release);
@@ -811,25 +829,23 @@ mod tests {
     }
 
     #[test]
-    fn output_queue_rejects_malformed_or_stale_audio() {
-        let mut queue = PlaybackQueue::new(48000);
-        assert!(queue.push_pcm(&[1]).is_err());
-        assert!(queue.samples.is_empty());
-        queue.push_pcm(&vec![0; MAX_OUTPUT_SAMPLES * 2]).unwrap();
-        assert!(queue.push_pcm(&[0, 0]).is_err());
-        assert_eq!(queue.samples.len(), MAX_OUTPUT_SAMPLES);
-    }
-
-    #[test]
-    fn playback_interpolates_across_network_chunks_and_silences_underflow() {
-        let mut queue = PlaybackQueue::new(48000);
-        queue.push_pcm(&[0, 0, 0, 64]).unwrap();
-        assert_eq!(queue.next_sample(), 0.0);
-        assert_eq!(queue.next_sample(), 0.25);
-        assert_eq!(queue.next_sample(), 0.0); // no next sample yet
-        queue.push_pcm(&[0, 0]).unwrap();
-        assert_eq!(queue.next_sample(), 0.5);
-        assert_eq!(queue.next_sample(), 0.25);
+    fn stopped_output_cannot_be_refilled_by_a_capture_tail() {
+        let mut mixer = PlaybackMixer::new(MixSettings {
+            original_enabled: true,
+            ..MixSettings::default()
+        })
+        .unwrap();
+        mixer.set_device_rate(INPUT_RATE);
+        let output = OriginalOutput {
+            queue: Arc::new(Mutex::new(mixer)),
+            stop: Arc::new(AtomicBool::new(false)),
+        };
+        output.push(&[0, 64, 0, 64]).unwrap();
+        assert_eq!(output.queue.lock().unwrap().next_sample(), 0.5);
+        output.stop.store(true, Ordering::Release);
+        output.queue.lock().unwrap().clear();
+        output.push(&[0, 64, 0, 64]).unwrap();
+        assert_eq!(output.queue.lock().unwrap().next_sample(), 0.0);
     }
 
     #[test]
@@ -839,6 +855,16 @@ mod tests {
         assert!(validate_routes(None, Some("Virtual Cable")).is_ok());
         assert!(validate_microphone(Some("BlackHole 2ch"), Some("BlackHole 2ch")).is_err());
         assert!(validate_microphone(Some("Built-in Microphone"), Some("BlackHole 2ch")).is_ok());
+    }
+
+    #[test]
+    fn playback_restore_selection_only_selects_loopback_on_windows() {
+        let selected = capture_system_device("Headphones".into());
+        if cfg!(target_os = "windows") {
+            assert_eq!(selected, "Headphones");
+        } else {
+            assert!(selected.is_empty());
+        }
     }
 
     #[test]
