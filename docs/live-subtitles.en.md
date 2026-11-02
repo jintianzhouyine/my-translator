@@ -1,0 +1,17 @@
+# Bilingual live captions
+
+[中文](live-subtitles.md) · [English](live-subtitles.en.md) · [Documentation](README.en.md)
+
+The current app interface is primarily Chinese. Chinese menu labels below identify the controls shown in the app.
+
+In **设置 → 显示设置** (Settings → Display), enable **双语字幕（原文＋译文）** (bilingual captions: source + translation). Each live caption shows the source above its translation. Turn it off to show translations only. You can also switch it through **更多 → 双语字幕** (More → Bilingual captions) in the live view. Changes take effect immediately, are saved for the next launch, and do not pause the call or change audio output.
+
+The side-by-side button in **更多** switches to separate source and translation columns. Turning bilingual captions off temporarily hides the source column; turning it back on restores the layout selected in the current app run. The content preference is saved across launches; the stacked/side-by-side layout is a choice for the current run.
+
+Source text and translations may arrive at different times. Qwen pairs them using the service's sentence IDs. If a translation arrives first, the app shows **等待原文…** (Waiting for source…) and fills in the source in the same segment when it arrives. It does not translate the result back to invent a source transcript. Qwen 3.8 transcription is enabled by default and does not require a separate ASR integration. The display preference also applies to Soniox, OpenAI and local mode whenever they return source text.
+
+Copied and saved sessions still include the source and translation received by the app. Hiding text does not delete or edit the history. [Audio-file translation](audio-file-translation.en.md) has independent display and export options.
+
+Automated checks cover stacked/side-by-side display, restoring the previous preference after a failed settings save, uninterrupted changes during a call, and delayed or out-of-order Qwen source text. Recognition quality still needs verification using your API account and meeting audio.
+
+Qwen references: [client events and default ASR](https://help.aliyun.com/zh/model-studio/live-translator-client-events), [server transcription and translation events](https://help.aliyun.com/zh/model-studio/live-translator-server-events).

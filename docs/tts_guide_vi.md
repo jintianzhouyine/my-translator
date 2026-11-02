@@ -1,5 +1,9 @@
 # Hướng Dẫn TTS (Text-to-Speech)
 
+[中文](tts_guide.md) · [English](tts_guide.en.md) · Tiếng Việt (bản cũ)
+
+> Đây là tài liệu lưu trữ của phiên bản cũ. Giá, độ trễ và danh sách nhà cung cấp bên dưới không mô tả đầy đủ phiên bản hiện tại. Xem hướng dẫn [tiếng Trung](tts_guide.md) hoặc [tiếng Anh](tts_guide.en.md) để biết cấu hình hiện tại; giao diện ứng dụng hiện chủ yếu dùng tiếng Trung.
+
 My Translator có thể **đọc thành tiếng bản dịch** ngay khi xuất hiện — như có phiên dịch viên ngồi cạnh. Hỗ trợ 3 nhà cung cấp:
 
 ## So sánh các lựa chọn

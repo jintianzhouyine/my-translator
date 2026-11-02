@@ -1,5 +1,7 @@
 # 手动构建和发布
 
+[中文](releasing.md) · [English](releasing.en.md) · [文档目录](README.md)
+
 当前发布组合为 **macOS Apple Silicon（ARM64）+ Windows x64（Intel/AMD 64 位）**。
 GitHub Actions 仅接受手动触发，推送代码、推送 tag 或创建 Release 草稿都不会启动构建。
 
@@ -7,7 +9,7 @@ GitHub Actions 仅接受手动触发，推送代码、推送 tag 或创建 Relea
 
 1. 同步 `package.json`、`package-lock.json`（顶层及根包）、`src-tauri/Cargo.toml`、
    `src-tauri/Cargo.lock`（本项目条目）及 `src-tauri/tauri.conf.json` 的版本。
-2. 创建 `docs/releases/v<版本>.md` 发布说明，完成相关测试并提交。
+2. 创建 `docs/releases/v<版本>.md` 中文发布说明及 `docs/releases/v<版本>.en.md` 英文版，完成相关测试并提交。工作流使用中文文件作为 Release 正文。
 3. 将提交和对应的 `v<版本>` tag 推送到 GitHub；同一版本 tag 不重复指向不同内容。
 4. 使用该 tag 创建 Release 草稿，暂不正式发布。没有草稿时，工作流会在构建成功后创建。
 

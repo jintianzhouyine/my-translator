@@ -1,5 +1,9 @@
 # Hướng dẫn cài đặt — Windows
 
+[简体中文](installation_guide_win.md) | [English](installation_guide_win.en.md) | **Tiếng Việt (bản cũ)**
+
+> Tài liệu tiếng Việt này được giữ lại từ phiên bản cũ; thông tin về engine, kiến trúc, chi phí và cập nhật có thể đã lỗi thời. Hãy xem hướng dẫn tiếng Trung hoặc tiếng Anh ở trên cho phiên bản hiện tại.
+
 Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trên Windows 10/11.
 
 ---
@@ -15,7 +19,7 @@ Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trê
 
 ## Bước 1 — Tải xuống
 
-Tải file `.exe` mới nhất tại: [**Releases — Windows**](https://github.com/phuc-nt/my-translator/releases/latest)
+Tải file `.exe` mới nhất tại: [**Releases — Windows**](https://github.com/jintianzhouyine/my-translator/releases/latest)
 
 Chọn phiên bản phù hợp:
 - **x64** — Đa số PC Windows (Intel/AMD)
@@ -103,7 +107,7 @@ Nhấn **Save & Close** khi xong.
 > 2. **Settings → Billing** → thêm phương thức thanh toán và nạp credit ($10 ≈ ~2.5 giờ)
 > 3. **API keys** → **Create new secret key** → copy key (`sk-...`)
 >
-> ⚠️ **Cảnh báo chi phí**: OpenAI Realtime đắt hơn Soniox khoảng 34 lần. Phù hợp cho cuộc họp quan trọng cần chất lượng tốt nhất; dùng hàng ngày nên chọn Soniox. Xem [**Benchmark OpenAI vs Soniox**](benchmark_openai_vs_soniox_vi.md) để có chi tiết.
+> ⚠️ **Cảnh báo chi phí**: OpenAI Realtime đắt hơn Soniox khoảng 34 lần. Phù hợp cho cuộc họp quan trọng cần chất lượng tốt nhất; dùng hàng ngày nên chọn Soniox. Xem [**Báo cáo benchmark lịch sử OpenAI vs Soniox**](../benchmarks/benchmark-260602-1725-latency-3engine-and-soniox-endpoint-tuning-report.en.md) để có chi tiết.
 
 Sau khi lưu OpenAI key hợp lệ, engine **OpenAI Realtime** sẽ chọn được trong dropdown:
 

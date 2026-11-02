@@ -1,153 +1,84 @@
-# TTS (Text-to-Speech) Guide
+# 语音朗读（TTS）指南
 
-My Translator can **read translations aloud** as they appear — like having a personal interpreter. Three providers available:
+[中文](tts_guide.md) · [English](tts_guide.en.md) · [越南语旧版](tts_guide_vi.md) · [文档目录](README.md)
 
-## Provider Comparison
+语音朗读把译文或「文本朗读」页面的文字合成为声音。它与识别、翻译是不同环节：本地朗读不代表整条翻译链路离线。Qwen 双向通话直接使用模型生成的译音，具体见 [Qwen 配置](qwen-duplex.md)。
 
-| | Edge TTS ⭐ | Google Chirp 3 HD | ElevenLabs |
-|-|-------------|-------------------|------------|
-| **Cost** | Free | Free 1M chars/mo, then $30/1M | ~$5–$22/month |
-| **Quality** | Natural, clear | Near-human, expressive | Very natural, expressive |
-| **Vietnamese** | ✅ HoaiMy, NamMinh | ✅ 6 voices (Aoede, Kore, Charon...) | ✅ Yes |
-| **Setup** | None — works instantly | Google Cloud API key | ElevenLabs API key |
-| **Speed control** | ✅ -50% to +100% | ✅ 0.5x to 2.0x | ❌ |
-| **Latency** | ~300-500ms | ~200-500ms | ~500-800ms |
-| **Best for** | Most users | Best Vietnamese quality | Voice cloning |
+## 支持的服务
 
-**Bottom line**: Edge TTS is great for most users. Google Chirp 3 HD offers significantly better Vietnamese quality with a generous free tier. ElevenLabs is for advanced use cases like voice cloning.
+当前设置中有 7 种提供方：
 
----
+| 提供方 | 运行位置与凭据 | 语速设置 |
+| --- | --- | --- |
+| Edge TTS（默认） | 在线，无需自行填写 API Key | -50% 至 +100% |
+| Microsoft v2 | 在线，无需自行填写 API Key | -50% 至 +100% |
+| Google TTS — 免费 | 在线，可填用户 API Key；也可使用构建时配置的密钥，两者都没有时不可用 | 0.5–2.0 倍，播放端调整 |
+| TikTok TTS | 在线，需要 TikTok `sessionid` | 0.5–2.0 倍，播放端调整 |
+| 本地离线朗读（Piper） | 本机 CPU；首次需下载声音模型，之后无需接口 | 0.5–3.0 倍 |
+| Google Chirp 3 HD | 在线，需要启用 Cloud Text-to-Speech API 的 Google Cloud API Key | 0.5–2.0 倍 |
+| ElevenLabs | 在线，需要 ElevenLabs API Key | 当前无独立语速控件 |
 
-## Local (Offline) — Free, 100% on-device
+界面中的「免费」是服务分类，不保证外部服务长期可用或无限调用。云端提供方会接收待朗读文本；费用、额度、语种和可用性以各服务账号的当前说明为准。旧版文档中的定价、延迟与合成速度不是本项目的当前性能承诺。
 
-### What is it?
+## 本地离线朗读
 
-Local TTS runs **Piper** neural voices entirely on your machine via sherpa-onnx — **no network, no API key, and nothing is ever sent anywhere**. Great for privacy or offline use (e.g. on a plane). Synthesis is fast (~15× real-time on CPU) and works on macOS and Windows.
+本地实现使用 sherpa-onnx 运行 Piper（VITS）声音模型，包含本地发音处理，合成时不上传文字、不需要 API Key，也不要求独立 GPU。首次下载模型需要联网；实际延迟与内存占用随 CPU、声音模型、文本长度和并行任务变化。
 
-### Setup
+1. 打开「设置 → 语音朗读」，在提供方中选择「本地离线朗读」。
+2. 选择语言筛选声音。当前内置目录提供越南语和英语模型，不包含中文模型；不要把选择本地提供方理解为已经支持所有翻译目标语言。
+3. 点击声音旁的下载按钮。首次下载会询问保存位置，可使用应用默认位置或自选文件夹。
+4. 下载完成后选中该声音，保存设置，再开启译文朗读，或到「文本朗读」页面播放文字。
 
-1. Settings → TTS → Provider → **🔊 Local (Offline) — Free**.
-2. Pick a **Language** (Vietnamese / English) to filter the list.
-3. Click **⬇️** next to a voice to download it. The first time, you'll be asked where to store models — the default app location or a custom folder.
-4. Select the downloaded voice (radio button), then toggle TTS on (`⌘ T`).
+管理方式：
 
-### Managing voices
+- 下载时显示进度，完成后校验 SHA-256。模型通常为数十 MiB，具体大小见列表。
+- 删除按钮会实际删除本地模型，释放磁盘空间。
+- 文件夹按钮可以更改模型保存位置；已经下载的模型不会自动搬迁，旧目录中的声音也不会继续显示在新目录列表中。
+- 已下载模型可以完全离线合成。目录中的声音包括越南语 VAIS1000、25 hours、自定义越南语声音，以及英语 Ryan、Lessac；以应用当前列表和可下载状态为准。
 
-- **Download**: each voice is ~65 MB; a progress indicator shows while downloading.
-- **Delete** (🗑️): removes the model from disk for real, freeing space.
-- **Model folder**: change the storage location anytime with the 📁 button. Voices downloaded to a previous folder simply stop being listed (they aren't moved).
+## Edge TTS 与 Microsoft v2
 
-### Notes
+两者都是在线 Microsoft 语音路径，不能在断网时当作离线功能使用。选择提供方、声音和语速后保存即可，不需要自行填写 API Key。Microsoft v2 可以在设置中按越南语或英语筛选声音；Edge 提供方有中文、英语、越南语、日语、韩语等预设声音，例如 Xiaoxiao、Jenny、HoaiMy、Nanami、SunHi。
 
-- Once a voice is downloaded, it works with **no internet connection at all**.
-- Voices are free, official on-device models (Vietnamese: VAIS1000, 25 hours; English: Ryan, Lessac). Quality is good and clear — not quite cloud-premium, but fully private and free.
+这类服务的接入方式和可用性可能变化。连接失败时先检查网络，再尝试其他提供方或已下载的本地模型。
 
----
+## Google TTS — 免费与 TikTok TTS
 
-## Edge TTS (Default — Free)
+**Google TTS — 免费** 是实验接入，与 Google Chirp 3 HD 是两个独立选项。在设置中可以填写自己的 Google API Key；未填时只会尝试构建时配置的密钥。没有任何可用密钥时服务不可用，不会使用硬编码的备用密钥。语速由播放端调整。
 
-### What is it?
+**TikTok TTS** 需要在设置中填写 `sessionid`，然后选择声音和语速。它同样需要网络；没有有效会话凭据时不能使用。可用声音以设置列表为准。
 
-Edge TTS uses the same neural speech engine behind Microsoft Edge's **"Read Aloud"** feature. My Translator connects to the same service to read translations.
+## Google Cloud TTS — Chirp 3 HD
 
-- **No API key needed** — works out of the box
-- **No explicit limits** — free for personal use
-- Microsoft may change policies anytime, but it has been stable
+1. 在 [Google Cloud Console](https://console.cloud.google.com) 新建或选择项目。
+2. 为该项目启用 [Cloud Text-to-Speech API](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com)，按账号要求配置结算和权限。
+3. 在 [凭据页面](https://console.cloud.google.com/apis/credentials) 创建 API Key，并将其 API 使用范围限制为 Cloud Text-to-Speech API。
+4. 在「设置 → 语音朗读」选择「Google Chirp 3 HD」，填入密钥，选择声音、语速，点击「保存并关闭」。
 
-### Available Voices
+应用提供越南语、英语、日语、韩语和中文的预设声音。具体服务额度和价格请查看自己的 Google Cloud 项目；此指南不固定承诺免费额度。
 
-| Voice | Language | Gender |
-|-------|----------|--------|
-| HoaiMy | Vietnamese 🇻🇳 | Female |
-| NamMinh | Vietnamese 🇻🇳 | Male |
-| Jenny | English 🇺🇸 | Female |
-| Guy | English 🇺🇸 | Male |
-| Nanami | Japanese 🇯🇵 | Female |
-| SunHi | Korean 🇰🇷 | Female |
-| Xiaoxiao | Chinese 🇨🇳 | Female |
+## ElevenLabs
 
-### Speed
+1. 在 [ElevenLabs](https://elevenlabs.io) 登录或注册，确认账号具备所需 API 使用权限和额度。
+2. 在账号的 API Keys 页面创建密钥。
+3. 在「设置 → 语音朗读」选择「ElevenLabs」，填入密钥、选择声音并保存。
 
-Adjust in Settings → TTS → Speed. Default **+20%**.
+当前集成支持选择声音，未提供在应用内创建或训练克隆声音的流程；也没有独立语速控件。费用和声音权限由自己的 ElevenLabs 账号决定。
 
----
+## 使用方式
 
-## Google Cloud TTS — Chirp 3 HD (Premium)
+- **实时译文朗读**：点击实时页的 TTS／朗读按钮，或按 `⌘ T`（Windows 使用对应的 Ctrl 快捷键）。应用每次启动时默认关闭，需按需开启。启用后随译文生成进行朗读。
+- **适用引擎**：单向的 Soniox／本地 MLX 可以使用独立 TTS。传统双向翻译会禁用该按钮，避免声音反复采集。
+- **Qwen 与 OpenAI Realtime**：独立 TTS 按钮不适用。Qwen 出站译音由模型原生生成，受实时页右上角「译音」开关控制，不会因为选择 Piper 就改成本地合成。
+- **阅读文字**：进入「文本朗读」页面，输入或粘贴文字，使用当前提供方播放、暂停或停止。长文本按段合成，失败段会显示错误；此音频路径与实时采集分开。
+- **切换提供方**：在「设置 → 语音朗读」选择并保存；使用已下载的本地模型前须确认声音已安装。
 
-### What is it?
+## 排查问题
 
-Google's latest text-to-speech model with **near-human quality**. Chirp 3 HD captures nuances in human intonation, making speech sound remarkably natural — especially for Vietnamese.
+- **没有声音**：检查朗读按钮、系统音量和播放设备；确认提供方凭据或本地模型有效。
+- **本地声音找不到**：检查模型文件夹与语言筛选；更改目录不会移动旧模型。
+- **Google 报错**：确认 API Key、API 启用状态、项目权限及结算；不要混淆 Google 免费实验选项与 Cloud Chirp 3 HD。
+- **Edge／Microsoft／TikTok 连接失败**：确认网络及服务可用性，TikTok 还需有效 `sessionid`。
+- **朗读被再次识别**：使用耳机并检查采集设备。降低音量或暂停采集；Windows 的系统声音采集路径可能包含应用自身的播放。
 
-### Pricing
-
-- **Free**: 1 million characters/month (~250K words — plenty for personal use)
-- **After free tier**: $30 per 1 million characters
-
-### How to Get API Key
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project (or use existing) — click dropdown at top-left → **New Project** → name it `my-translator` → **Create**
-3. Enable the Text-to-Speech API:
-   - Visit [console.cloud.google.com/apis/library/texttospeech.googleapis.com](https://console.cloud.google.com/apis/library/texttospeech.googleapis.com)
-   - Click **Enable**
-4. Create API Key:
-   - Go to [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
-   - Click **+ Create Credentials** → **API Key**
-   - Copy the key (format: `AIzaSy...`)
-5. *(Recommended)* Restrict the key:
-   - Click on the key → **Restrict key**
-   - Under **API restrictions** → select **Cloud Text-to-Speech API** only
-   - **Save**
-
-### Setup in App
-
-1. In app: Settings → TTS → select **🌐 Google Chirp 3 HD**
-2. Paste your API key
-3. Choose a voice and speed
-4. Click **Save & Close**
-
-### Available Voices
-
-Vietnamese (6 voices), English (4 voices), Japanese (2), Korean (2), Chinese (2) — all Chirp 3 HD quality.
-
----
-
-## ElevenLabs (Premium)
-
-### What is it?
-
-ElevenLabs specializes in **AI voice technology**, known for extremely natural voices with rich emotion. Paid service with API key.
-
-### How to Get API Key
-
-1. Go to [elevenlabs.io](https://elevenlabs.io) → create an account
-2. Subscribe to **Starter plan** ($5/month, includes ~30 min TTS) or higher
-3. Go to profile icon (top-right) → **API Keys**
-4. Click **Create API Key** → copy the key
-
-### Setup in App
-
-1. In app: Settings → TTS → select **✨ ElevenLabs**
-2. Paste your API key
-3. Choose a voice
-4. Click **Save & Close**
-
----
-
-## How to Use TTS
-
-1. **Toggle TTS**: Click the **TTS** button on the toolbar or press `⌘ T`
-2. TTS is **OFF by default** on each app launch — you must enable it each session
-3. When enabled, translations are read aloud as they appear
-4. Switch providers anytime in Settings → TTS
-
-> **Two-way mode**: TTS is automatically disabled when using two-way translation. This prevents audio feedback loops where TTS output gets recaptured by the microphone and re-translated. The TTS button will appear grayed out in two-way mode.
-
----
-
-## Troubleshooting
-
-- **No sound?** Check the TTS button (🔊) is active and system volume is up
-- **Edge TTS not working?** Check your internet connection
-- **Google TTS error?** Verify your API key is correct and Text-to-Speech API is enabled
-- **TTS voice getting re-transcribed?** Lower TTS volume or pause transcription while TTS is speaking
+声音模型、云接口和真实设备的效果需要在自己的电脑上试听。本指南描述项目已实现的配置和流程，不代表对所有提供方做过当前账号的端到端验收。

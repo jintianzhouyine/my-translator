@@ -1,212 +1,150 @@
 <p align="center">
-  <img src="banner.png?v=2" alt="My Translator — Real-time Speech Translation">
+  <img src="banner.png?v=2" alt="My Translator — 实时语音翻译与双语字幕">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/jintianzhouyine/my-translator?color=green&label=release" alt="Latest Release">
-  <img src="https://img.shields.io/badge/built_with-Tauri-orange?logo=tauri" alt="Built with Tauri">
-  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-black?logo=apple" alt="macOS">
-  <img src="https://img.shields.io/badge/Windows-10%2F11-blue?logo=windows" alt="Windows">
-  <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
-  <img src="https://img.shields.io/github/stars/jintianzhouyine/my-translator?style=flat&color=yellow" alt="Stars">
+  <strong>简体中文</strong> · <a href="README.en.md">English</a>
 </p>
 
-**My Translator** is a real-time speech translation desktop app built with Tauri. It captures audio directly from your system or microphone, transcribes it, and displays translations in a minimal overlay — with no intermediary server involved.
+<p align="center">
+  <a href="https://github.com/jintianzhouyine/my-translator/releases/latest"><img src="https://img.shields.io/github/v/release/jintianzhouyine/my-translator?color=green&label=release" alt="最新版本"></a>
+  <img src="https://img.shields.io/badge/built_with-Tauri-orange?logo=tauri" alt="使用 Tauri 构建">
+  <img src="https://img.shields.io/badge/macOS-Apple%20Silicon-black?logo=apple" alt="macOS Apple Silicon">
+  <img src="https://img.shields.io/badge/Windows-x64-blue?logo=windows" alt="Windows x64">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT 许可证"></a>
+  <img src="https://img.shields.io/github/stars/jintianzhouyine/my-translator?style=flat&color=yellow" alt="本项目 Star 数">
+</p>
 
-> 📖 Installation guides: [macOS (EN)](docs/installation_guide.md) · [macOS (VI)](docs/installation_guide_vi.md) · [Windows (EN)](docs/installation_guide_win.md) · [Windows (VI)](docs/installation_guide_win_vi.md)
+# My Translator · 我的翻译器
 
-### ⬇️ Which build do I download?
+一款基于 Tauri 2 的桌面语音翻译工具，支持**实时双语字幕、双向通话译音和音频文件翻译**。采集系统声音或麦克风后，通过自己配置的云端服务完成识别与翻译，也可在 Apple Silicon 上使用实验性的本地翻译模式。
 
-Starting with v0.10.1, this fork publishes macOS Apple Silicon and Windows x64 installers. Grab the matching file from the [latest release](https://github.com/jintianzhouyine/my-translator/releases/latest):
+软件只需安装在自己的电脑上：阅读对方讲话的翻译字幕，或将自己的讲话翻译成语音，通过虚拟麦克风送给会议中的对方。当前应用界面主要为中文；项目文档提供中文和英文版本。
 
-| Your machine | File |
-|---|---|
-| **Mac Apple Silicon** (M1/M2/M3/M4) | `MyTranslator_<ver>_aarch64.dmg` |
-| **Windows x64** (64-bit Intel/AMD) | `MyTranslator_<ver>_x64-setup.exe` |
+[下载最新版](https://github.com/jintianzhouyine/my-translator/releases/latest) · [文档目录](docs/README.md) · [反馈问题](https://github.com/jintianzhouyine/my-translator/issues)
 
-> On a Mac, check  → **About This Mac** → *Chip*: **Apple M-series** → `aarch64`, **Intel** → `x64`. Macs from late 2020 on are almost all Apple Silicon.
-> This fork uses manual downloads from Releases; automatic update packages are not published. `SHA256SUMS` contains installer checksums. See the release notes for setup requirements.
-> Windows ARM64 builds remain available in [v0.10.0](https://github.com/jintianzhouyine/my-translator/releases/tag/v0.10.0). New versions target Windows x64; this is not a 32-bit x86 build.
+## 下载与安装
 
----
+当前发布的安装包为：
 
-## How It Works
+| 电脑 | 安装包 |
+| --- | --- |
+| Mac M 系列（Apple Silicon） | `MyTranslator_<版本>_aarch64.dmg` |
+| Windows Intel / AMD 64 位 | `MyTranslator_<版本>_x64-setup.exe` |
 
-```
-                                    ┌── ☁️  Soniox  (text)              ──┐
-System Audio / Mic → 16kHz PCM ─────┼── ⚡ OpenAI Realtime (text+🔊)      ─┼─→ Overlay UI
-                                    ├── 🌏 Qwen3.8 LiveTranslate (text + speech) │
-                                    └── 🖥️  Local MLX  (text, offline)   ─┘
-                                                                            ↓ (optional, text engines)
-                                                  TTS (Edge / Google / ElevenLabs) → 🔊
-```
+Release 中的 `SHA256SUMS` 可用于校验安装包。应用内「检查更新」会检查当前仓库的正式 Release，并引导手动下载；新版本通过 GitHub Actions 手动构建。Windows ARM64 的旧安装包保留在 [v0.10.0](https://github.com/jintianzhouyine/my-translator/releases/tag/v0.10.0)，当前不提供新的 Windows ARM64 或 Mac Intel 安装包。
 
-Four translation engines, pick what fits your call:
+macOS 安装包使用 ad-hoc 签名，未经 Apple 公证；Windows 安装包未使用发行者证书签名。安装及权限处理见 [macOS 指南](docs/installation_guide.md)和 [Windows 指南](docs/installation_guide_win.md)。
 
-| Feature | Detail |
-|---------|--------|
-| **Engines** | ☁️ Soniox · ⚡ OpenAI Realtime · 🌏 Qwen LiveTranslate Flash · 🖥️ Local MLX |
-| **Latency** | ~2 s (Soniox / OpenAI) · Qwen3.8 depends on network and turn detection; not yet benchmarked here · ~10 s (Local) |
-| **Languages** | 70+ source → any target (Soniox), 13 targets (OpenAI), 60 text / 29 speech targets (Qwen), JA/EN/ZH/KO → VI/EN (Local) |
-| **Cost** | ~$0.12/hr (Soniox) · ~$4/hr (OpenAI, includes voice) · Qwen billed by usage, with two sessions for duplex calls · Free (Local) |
-| **TTS** | Optional TTS for Soniox / Local; Qwen3.8 generates outgoing translated speech directly |
-| **Platform** | macOS (ARM + Intel) · Windows · Local mode = Apple Silicon only |
-| **Signed** | macOS ad-hoc signature, not notarized; Windows installer has no publisher certificate |
-| **Updates** | Download new versions manually from this fork's Releases |
+## 主要功能
 
-> 📊 Detailed head-to-head: [**OpenAI Realtime vs Soniox benchmark**](docs/benchmark_openai_vs_soniox.md) — speed, quality, cost, and translation-mechanism comparison from a 5-min real-world test.
+### 实时字幕
 
----
+- 采集系统声音、麦克风，或同时采集两者。
+- 显示译文，或开启「双语字幕」显示原文＋译文；支持上下排列和左右双栏对照。
+- 提供置顶窗口、精简模式、字体大小和颜色调整，以及不会打断历史阅读的自动滚动。
+- 保存和浏览本机会话记录；字幕显示开关不会删除已收到的原文。
 
-## Features
+详见[实时双语字幕](docs/live-subtitles.md)。原文是否可用取决于所选引擎返回的识别内容。
 
-### 📖 Dual Panel View
+### Qwen 双向通话
 
-Two display modes:
-- **Single** (default) — Translation text only, clean and focused
-- **Dual** — Source | Translation side-by-side, each panel scrolls independently
+使用百炼的 `qwen3.8-livetranslate-flash-realtime`，为两个方向建立独立会话：
 
-Toggle with the panel button (bottom-right on hover).
-
-### 🔄 Smart Scroll
-
-Auto-scroll only when you're at the bottom. Scroll up to read old content without being yanked back down.
-
-### 🔤 Quick Font Size
-
-A- / A+ floating controls (bottom-right on hover). Font size adjustable up to 140px — great for presentations.
-
-### 🔄 Two-Way Translation
-
-Translate conversations between two languages simultaneously — ideal for bilingual meetings.
-
-- **One-way**: Source language → Target language (e.g., Japanese → Vietnamese)
-- **Two-way**: Language A ↔ Language B (e.g., Vietnamese ↔ Japanese) — the app detects who is speaking and translates to the other language automatically
-
-**Setup for video calls** (Zoom, Google Meet, MS Teams):
-1. Audio Source: **Both** (System + Mic)
-2. Translation Type: **Two-way**
-3. Set Language A and Language B
-
-> **Note**: TTS narration is automatically disabled in two-way mode to prevent audio feedback loops (TTS output → mic recapture → re-translation).
-
-### 🎙️ TTS Narration
-
-Read translations aloud in one-way mode — 3 providers:
-
-| | Edge TTS ⭐ | Google Chirp 3 HD | ElevenLabs |
-|-|-------------|-------------------|------------|
-| **Cost** | Free | Free 1M chars/mo | ~$5/mo+ |
-| **Quality** | ★★★★☆ Neural | ★★★★★ Near-human | ★★★★★ Premium |
-| **Vietnamese** | ✅ 2 voices | ✅ 6 voices | ✅ Yes |
-| **Setup** | None | Google Cloud API key | API key |
-| **Speed control** | ✅ | ✅ 0.5x–2.0x | ❌ |
-
-TTS is **OFF by default** — toggle with the TTS button or `⌘ T`.
-
-> 📖 TTS guide: [English](docs/tts_guide.md) · [Tiếng Việt](docs/tts_guide_vi.md)
-
-### 📖 Custom Translation Terms
-
-Define how domain-specific words should be translated:
-
-```
-Original sin = Tội nguyên tổ
-Christ = Kitô
-Pneumonia = Viêm phổi
+```text
+你的讲话 → 识别与翻译 → 生成译音 → 虚拟麦克风 → 对方的会议软件
+对方讲话 → 采集会议声音 → 识别与翻译 → 本机原文和翻译字幕
 ```
 
-Add terms in Settings → Translation → Translation terms. Great for religious, medical, or technical content.
+- 分别设置「对方听到的语言」和「我阅读字幕的语言」，输入语种自动识别。
+- 实时页右上角独立控制发给对方的**原声、译音及各自音量**。
+- 支持将虚拟输入设为系统默认麦克风；暂停、停止、启动失败或正常退出后恢复记录的音频设备。强制结束进程后，在下次启动时尝试恢复。
+- 自动配对支持 macOS BlackHole 和 Windows 标准名称的 VB-CABLE（含 A/B/C/D）；其他设备可使用手动路由。
+- 只想阅读字幕时，可以关闭双向通话，无需虚拟麦克风。
 
-### ⚡ OpenAI Realtime Mode
+需要自行准备百炼 API Key、业务空间 ID 及匹配的北京／新加坡地域。双向通话分别计量两个会话，直接生成译音，无需另接 TTS。虚拟音频驱动需要单独安装，会议软件应使用相应输入设备或系统默认麦克风。详见 [Qwen 配置与音频路由](docs/qwen-duplex.md)。
 
-Single-call streaming translation via OpenAI's `gpt-realtime-translate` (May 2026 GA). Returns **translated text *and* translated speech audio** over one WebSocket — no separate TTS step, lower end-to-end latency, more idiomatic output. Trade-off: **~$4/hr**, charged to your own OpenAI account. 13 target languages: en, es, pt, fr, de, it, ru, hi, id, vi, ja, ko, zh.
+### 专有名词导入
 
-Two-way mode and the custom TTS toggle are unavailable while OpenAI Realtime is selected (audio is native).
+Qwen 的两个翻译方向可以独立维护词典。支持从 Excel（`.xlsx`）、CSV、TSV、TXT 和 JSON 导入，预览后选择合并、覆盖冲突或整份替换；可交换两列用于反向翻译，每个方向最多 1,000 条。
 
-### 🌏 Qwen3.8 LiveTranslate Duplex Mode
+提供 [Excel 示例词表](docs/examples/qwen-terms.xlsx)。词典用于向模型提示指定译法，不能保证每次输出完全一致；详见 [术语词典与导入说明](docs/qwen-duplex.md#术语词典)。
 
-Uses `qwen3.8-livetranslate-flash-realtime` with two independent sessions:
+### 音频文件翻译与字幕回放
 
-- Your microphone → translated speech → an explicitly selected virtual audio output → the meeting application's microphone.
-- Meeting audio → original and translated captions on your own computer.
+- 选择本地录音，生成原文、译文和带时间轴的字幕；当前沿用已保存的 Qwen 实时接口配置。
+- 支持自动分段、自定义分割点，或手动导入已经切分的文件。
+- 加速模式最多两段并行，显示中间译文；遇到暂时性错误可自动重试，也可单独重试或跳过失败片段。
+- 点击译文播放对应的原音频范围，导出译文、原文或双语的 SRT / VTT / TXT。
 
-Input language is detected automatically. Configure separate target languages and terminology dictionaries for each direction. Caption-only mode does not capture your microphone or require a virtual audio device. Native speech output does not need a separate TTS provider.
+桌面自动解码需要本机安装 FFmpeg / ffprobe；当前未内置这两个工具。自动解码支持单个原文件最多 16 GiB、24 小时；手动导入的每个片段最多 100 MiB、30 分钟。时间轴为语音段级别，实际对齐与翻译效果取决于服务返回结果。详见[音频文件翻译指南](docs/audio-file-translation.md)。
 
-Import terminology from Excel (`.xlsx`) using the first two columns for source terms and translations. Select a worksheet, preview merge or replacement, resolve conflicts, and optionally swap columns for the opposite direction. CSV, TSV, TXT and JSON are also supported. Files are read locally, and each direction supports up to 1,000 terms. An [Excel example](docs/examples/qwen-terms.xlsx) is included.
+### 多种引擎与语音朗读
 
-The **音频翻译** tab translates local audio files into text and timed subtitles using the saved Qwen configuration. Accelerated mode divides recordings into requests of up to two minutes and runs two requests concurrently, preserving the original timeline; sequential mode is also available. Intermediate translations appear as they arrive. Transient failures retry up to twice, and failed requests can be retried or skipped individually without restarting completed parts. Click a translated segment to play its original audio range, then export translated, original or bilingual SRT/VTT/TXT. Desktop decoding uses locally installed FFmpeg / ffprobe (up to 16 GiB / 24 hours per source). You can adjust split points or import files you have already split if automatic decoding fails; each manually imported file is limited to 100 MiB / 30 minutes and keeps its file boundary. Actual speed depends on network and provider limits. See the [audio file translation guide](docs/audio-file-translation.md).
+| 引擎 | 应用中的用途 | 需要准备 |
+| --- | --- | --- |
+| Qwen LiveTranslate | 双向通话译音、本机字幕、音频文件翻译 | 百炼 Key、业务空间、地域；通话译音另需虚拟音频设备 |
+| Soniox | 流式识别与文字翻译、双语对话识别、上下文和术语配置 | Soniox API Key |
+| OpenAI Realtime | 单向流式文字字幕；当前界面未启用语音播放 | OpenAI API Key |
+| 本地 MLX（实验性） | 在本机进行识别和翻译 | Apple Silicon、Python 环境及本地模型 |
 
-Supply a Bailian API key, workspace ID and matching Beijing or Singapore region. Duplex uses two billable sessions. Virtual audio drivers must be installed separately and selected in your meeting application; use a driver compatible with your Windows system architecture. See the [Chinese setup and verification guide](docs/qwen-duplex.md). Live provider access and end-to-end calls still require validation with your account and devices.
+不同引擎的语种、原文返回和语音能力不同，不能将 Qwen 的通话路由功能视为所有引擎通用。云端费用由自己的服务账号承担，实际价格、语言支持和延迟以服务商及使用情况为准。
 
-### 🖥️ Local Mode (Apple Silicon only)
+Soniox／本地文字翻译还可使用独立 TTS 朗读；提供 Edge、Google、ElevenLabs 等在线选项，以及基于 Piper / sherpa-onnx 的本地语音。离线语音需先下载模型，现有目录主要为越南语和英语。另有「文本朗读」页面，可直接粘贴文字播放。详见 [TTS 指南](docs/tts_guide.md)。
 
-Experimental offline mode using MLX + Whisper + Gemma — runs 100% on-device. JA/EN/ZH/KO → VI/EN.
+## 数据与隐私
 
----
+- 云端模式直接连接自己配置的服务商；音频、术语和必要上下文会发送给对应服务，不经过本项目的中转服务器。
+- API Key 和应用设置保存在本机，不要将密钥或私人录音提交到仓库。
+- 文件选择和分段在本机处理，点击开始翻译后才发送对应音频；导出和会话记录保存在本机。
+- 本地 MLX 翻译和 Piper 语音在准备好模型及运行环境后可在本机处理；云端模式需要联网。
 
-## Privacy
+## 从源码运行
 
-**Your audio never touches our servers — because there are none.**
-
-- App connects **directly** to APIs you configure — no relay, no middleman
-- **You own your API keys** — stored locally, never transmitted elsewhere
-- **No account, no telemetry, no analytics** — zero tracking
-- Transcripts saved as `.md` files locally, per session
-
----
-
-## Tech Stack
-
-- **[Tauri 2](https://tauri.app/)** — Rust backend + WebView frontend
-- **[ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)** — macOS system audio
-- **[WASAPI](https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi)** — Windows system audio
-- **[cpal](https://github.com/RustAudio/cpal)** — Cross-platform microphone
-- **[Soniox](https://soniox.com)** — Real-time STT + translation
-- **[OpenAI Realtime Translate](https://platform.openai.com/docs/guides/realtime)** — `gpt-realtime-translate` (text + native voice)
-- **[MLX](https://github.com/ml-explore/mlx)** — On-device Whisper + Gemma for offline mode
-- **[Piper](https://github.com/rhasspy/piper) via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)** — Local offline neural TTS (on-device, no network)
-- **[Edge TTS](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/index-text-to-speech)** — Free neural TTS (default)
-- **[Google Cloud TTS](https://cloud.google.com/text-to-speech)** — Chirp 3 HD (near-human quality)
-- **[ElevenLabs](https://elevenlabs.io)** — Premium TTS
-
----
-
-## Build from Source
+需要 Node.js 20+、Rust stable，以及对应平台的 Tauri 原生构建工具；macOS 需要 Xcode Command Line Tools，Windows 需要 MSVC C++ 构建工具与 WebView2。
 
 ```bash
 git clone https://github.com/jintianzhouyine/my-translator.git
 cd my-translator
-npm install
-npm run tauri build
+npm ci
 ```
 
-Requires: Rust (stable), Node.js 18+, macOS 13+ or Windows 10+.
+Windows x64 在构建前还需准备语音库：
 
----
+```powershell
+./scripts/prepare-windows-x64.ps1
+```
 
-## Development Specifications
+准备完成后启动应用：
 
-This project uses LeanSpec to track feature requirements, design decisions and acceptance checks.
-See [the spec workflow](specs/README.md) and [project instructions](AGENTS.md).
-Run `lean-spec board` from the repository root to view current work.
+```bash
+npm run dev
+```
 
-Releases are built only when manually requested in GitHub Actions. See the [release workflow guide](docs/releasing.md) for selecting a version tag and publishing its installers.
+`npm run build` 用于打包，`npm test` 运行应用 JavaScript 测试；原生测试使用 `cargo test --manifest-path src-tauri/Cargo.toml --locked --lib`。浏览器预览 `npm run dev:web` 不具备原生采集与音频路由能力。
 
----
+本项目使用 LeanSpec 记录需求与验收，在根目录运行 `lean-spec board` 查看；协作说明见 [AGENTS.md](AGENTS.md) 和 [specs/README.md](specs/README.md)。发布说明见[手动构建和发布](docs/releasing.md)。自动测试不等同于真实云账号、虚拟设备及会议软件的端到端验收。
+
+## 文档
+
+完整中英文对照入口见[文档目录](docs/README.md)。
+
+- [macOS 安装](docs/installation_guide.md) · [Windows 安装](docs/installation_guide_win.md)
+- [Qwen 双向通话](docs/qwen-duplex.md) · [实时双语字幕](docs/live-subtitles.md)
+- [音频文件翻译](docs/audio-file-translation.md) · [TTS 语音朗读](docs/tts_guide.md)
+- [构建和发布](docs/releasing.md) · [历史变更记录](docs/project-changelog.md)
+- [历史基准测试](benchmarks/README.md)
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=phuc-nt%2Fmy-translator&type=date&legend=top-left">
- <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=phuc-nt/my-translator&type=date&theme=dark&legend=top-left" />
-  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=phuc-nt/my-translator&type=date&legend=top-left" />
-  <img alt="Star History Chart" src="https://api.star-history.com/image?repos=phuc-nt/my-translator&type=date&legend=top-left" />
- </picture>
+<a href="https://www.star-history.com/?repos=jintianzhouyine%2Fmy-translator&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=jintianzhouyine/my-translator&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=jintianzhouyine/my-translator&type=date&legend=top-left" />
+    <img alt="jintianzhouyine/my-translator 的 Star 历史" src="https://api.star-history.com/image?repos=jintianzhouyine/my-translator&type=date&legend=top-left" />
+  </picture>
 </a>
 
----
+## 致谢与许可证
 
-## License
-
-MIT
+本项目基于 [phuc-nt/my-translator](https://github.com/phuc-nt/my-translator) 继续开发。采用 [MIT 许可证](LICENSE)，保留原作者的版权与许可声明。

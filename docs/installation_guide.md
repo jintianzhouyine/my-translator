@@ -1,258 +1,98 @@
-# Installation Guide
+# macOS 安装与使用指南
 
-Step-by-step guide to install and use **My Translator** on macOS.
+**简体中文** | [English](installation_guide.en.md) | [Tiếng Việt（旧版）](installation_guide_vi.md)
 
----
+本指南适用于当前仓库的 Mac Apple Silicon 发行版。应用界面主要使用中文；英文文档保留中文界面标签，方便对照操作。
 
-## Requirements
+## 准备条件
 
-- macOS 13 or later (Apple Silicon — M1/M2/M3/M4)
-- **Soniox mode** (recommended): [Soniox](https://soniox.com) API key (pay-per-use, ~$0.12/hour)
-- **OpenAI Realtime mode** (premium): [OpenAI](https://platform.openai.com) API key (~$4/hour — much pricier, but returns native translated voice)
-- **Local mode**: ~5 GB free disk space (for AI models, one-time download)
-- **TTS narration** (optional, text engines only): See [TTS Guide](tts_guide.md) for provider options
+- macOS 13 或更新版本，Apple Silicon（M 系列）芯片。
+- 云端翻译需要网络，以及所选服务的 API Key；Qwen 还需要百炼业务空间 ID 和匹配的服务地域。
+- 本地 MLX 模式仅适用于 Apple Silicon，需要另外下载模型并预留磁盘空间。
+- 只有向会议软件发送译音时，才需要单独安装虚拟音频设备；仅看字幕不需要。
 
----
+云服务按各账号的实际用量计费，额度和价格以服务商控制台为准。无需为所有引擎都申请密钥，只配置准备使用的引擎即可。
 
-## Step 1 — Download
+## 下载与安装
 
-Download the latest `.dmg` from: [**Releases — macOS**](https://github.com/phuc-nt/my-translator/releases/latest)
+1. 打开当前仓库的 [Releases](https://github.com/jintianzhouyine/my-translator/releases/latest)，选择 `MyTranslator_<版本>_aarch64.dmg`。
+2. 打开 DMG，将 **My Translator** 拖入「应用程序」，然后推出 DMG。
+3. 从「应用程序」打开 My Translator。
 
-Choose the right file:
-- `MyTranslator_x.x.x_aarch64.dmg` — Apple Silicon (M1/M2/M3/M4)
-- `MyTranslator_x.x.x_x64.dmg` — Intel Mac
+当前仓库发布 Mac ARM64 与 Windows x64 安装包，不提供新版 Intel Mac 安装包。可在苹果菜单 →「关于本机」查看芯片。Release 中的 `SHA256SUMS` 用于核对安装包校验值。
 
----
+macOS 安装包使用 ad-hoc 签名，未经 Apple 开发者签名和公证。首次打开可能被系统拦截；确认安装包来自本仓库后，可到「系统设置 → 隐私与安全性」按提示允许打开，再重新启动应用。
 
-## Step 2 — Install
+## 授予音频采集权限
 
-1. Open the `.dmg` file
-2. Drag **My Translator** into the **Applications** folder
-3. Eject the DMG
+- **对方声音／系统声音字幕**：在「系统设置 → 隐私与安全性 → 录屏与系统录音」允许 My Translator。旧版 macOS 中可能显示为「屏幕录制」。
+- **识别自己的声音或双向通话**：同时允许「麦克风」权限。
+- 按系统要求退出并重新打开应用，再点击「开始」。权限属于正在运行的应用身份；`MyTranslator Dev` 与正式版可能是不同的权限条目。
 
----
+音频文件翻译直接读取选中的本地文件，不需要录屏或麦克风权限。
 
-## Step 3 — First Launch
+## 选择与配置引擎
 
-Open My Translator from Applications.
+首次打开可选择引擎；选择会被记住，以后也可通过实时页工具栏切换。选择引擎不会自动开始采集或云端会话。
 
-> ✅ The app is signed and notarized — macOS should allow it without any security warnings.
-
----
-
-## Step 4 — Grant Screen Recording Permission
-
-On first launch, macOS will ask for **Screen & System Audio Recording** permission:
-
-1. Click **Open System Settings** when prompted
-2. Find **My Translator** in the list
-3. **Toggle the switch ON**
-4. macOS will ask to **Quit & Reopen** — click that button
-
-> This permission is required for the app to capture system audio (YouTube, Zoom, podcasts, etc.)
-
----
-
-## Step 5 — Get a Soniox API Key
-
-Soniox provides real-time speech recognition and translation.
-
-1. Go to [console.soniox.com](https://console.soniox.com) → create an account
-2. Add billing:
-   - Click **Billing** in the left sidebar
-   - Add a payment method
-   - Add funds ($10 minimum — lasts ~80+ hours at $0.12/hour)
-3. Create API key:
-   - Click **API Keys** in the left sidebar
-   - Click **Create API Key**
-   - Copy the key (format: `soniox_...`)
-
-> 💡 Soniox charges ~$0.12/hour of audio processed. $10 ≈ 80+ hours of translation.
-
-After pasting the Soniox key in Settings, the **Soniox** engine becomes the active option:
-
-![Settings — Soniox engine selected with API key](user_manual/setting_soniox.png)
-
----
-
-## Step 5b — Get an OpenAI API Key (Optional)
-
-Skip this step if you only plan to use Soniox or Local mode.
-
-OpenAI Realtime is the **premium** engine — it returns translated text **and** translated speech audio over a single stream, so no separate TTS provider is needed. The trade-off is cost: about **$4/hour** vs Soniox's $0.12/hour (~34× more expensive at provider list rates).
-
-1. Go to [platform.openai.com](https://platform.openai.com) → create an account
-2. Add billing:
-   - Click **Settings → Billing**
-   - Add a payment method and add credits ($10 ≈ ~2.5 hours of translation)
-3. Create API key:
-   - Click **API keys** → **Create new secret key**
-   - Copy the key (format: `sk-...`)
-
-> ⚠️ **Cost warning**: OpenAI Realtime is roughly 34× pricier than Soniox. Use it for high-stakes meetings where translation quality and native voice matter. For general use, Soniox is the better default.
->
-> 📊 See [**OpenAI Realtime vs Soniox benchmark**](benchmark_openai_vs_soniox.md) for a real-world comparison.
-
-After pasting the OpenAI key in Settings, the **OpenAI Realtime** engine becomes selectable:
-
-![Settings — OpenAI Realtime engine selected with API key](user_manual/setting_openai.png)
-
----
-
-## Step 5c — Get a Qwen LiveTranslate Flash API Key (Optional, free preview)
-
-Qwen LiveTranslate Flash (Alibaba DashScope) is the **free preview** engine — fastest of the three (~4 s first token), supports **60+ languages**, returns translated text only (no native voice, no source-transcript panel).
-
-> ⚠️ **IMPORTANT — must pick Singapore region.** The app connects to the international endpoint `dashscope-intl.aliyuncs.com`. Keys created in other regions (China Beijing, Hong Kong, US Virginia, Germany Frankfurt) are rejected and the app raises `WebSocket error` the moment you press Start.
-
-1. Open <https://bailian.console.alibabacloud.com> (Alibaba Cloud Model Studio).
-2. **Before sign-in / sign-up**, click the region dropdown in the top-right and pick **Singapore**. If you've already signed in to another region, switch to Singapore — you may need to register a separate workspace for this region.
-3. Once inside the Console (top-right still shows "Singapore"), activate the **Model Studio (DashScope)** service if prompted.
-4. Go to **API Keys**, click **Create API Key**, name it anything.
-5. **Copy the key immediately** — it's only shown in full once.
-6. In Settings → pick the **Qwen LiveTranslate Flash** engine → paste the key.
-
-![Settings — Qwen LiveTranslate Flash engine selected with API key](user_manual/setting_qwen.png)
-
-> **Qwen Live Flash notes:**
-> - **Must pick a source language** before Start. Unlike Soniox/OpenAI which auto-detect, Qwen Live needs the source language up front — the source picker automatically hides "Auto-detect" when this engine is selected.
-> - **No dual-panel view** (the model returns translation only, no source transcript). Translation-only display.
-> - **No native voice output / custom TTS** — avoids the speaker → mic feedback loop.
-> - Currently in **free preview**. Pricing may change once it leaves preview — watch Alibaba Cloud announcements.
-
-### Troubleshooting `WebSocket error` with Qwen
-
-| Symptom | Common cause | Fix |
+| 引擎 | 需要配置 | 用途与限制 |
 | --- | --- | --- |
-| `WebSocket error` immediately on Start | Key created in a non-Singapore region | Recreate the key in Singapore (see step 2 above) |
-| Error after ~5–10 seconds | Right region but Qwen Live model not enabled | Model Studio → Model Square → enable `qwen3-livetranslate-flash-realtime` |
-| Translates one sentence then stalls | Source language left on "auto" | Settings → Source language → pick the actual language (e.g. Japanese) |
-| Flaky errors | Network blocks `dashscope-intl.aliyuncs.com` (corp firewall / VPN) | Try a different network (4G/5G) or disable VPN |
+| **Qwen3.8 实时通话翻译** | 百炼 API Key、业务空间 ID、北京或新加坡地域 | 对方声音转本机字幕；自己的声音生成译音并送往虚拟麦克风；支持两方向独立词典 |
+| **Soniox** | Soniox API Key | 云端实时识别与文字翻译；可使用独立 TTS 朗读译文 |
+| **OpenAI Realtime** | OpenAI API Key | 单向云端实时字幕；当前启动流程关闭语音播放，也不使用 Soniox 的双向模式或独立 TTS |
+| **本地 MLX** | 本地模型 | 实验性离线识别与翻译，仅 Apple Silicon；支持的语言范围与云端引擎不同 |
 
----
+打开「设置 → 翻译引擎」，选中所需引擎，填写对应配置并「保存并关闭」。云端引擎在未填密钥时仍可选择，但开始前会校验配置。密钥格式提示不代表已经具备模型权限或余额。
 
-## Step 6 — Configure the App
+### Qwen：先验证字幕，再配置出站译音
 
-1. Click ⚙️ (or press `⌘ ,`) to open **Settings**
-2. Go to the **General** tab
-3. Paste your **Soniox API key** and/or **OpenAI API key** (whichever engines you want enabled)
-   - A green dot ✓ next to each key field means the key format looks valid; click **Test** to ping the provider live
-   - Engines without a valid key are greyed out in the dropdown
-4. Choose translation type:
-   - **One-way**: Select Source language and Target language
-   - **Two-way**: Select Language A and Language B (for bilingual meetings — the app auto-detects and translates both directions). *Two-way is unavailable on OpenAI Realtime — use Soniox or Local for two-way.*
-5. Choose Translation Engine:
+1. 选择 Qwen，填写同一地域的百炼 API Key、业务空间 ID 和服务地域。
+2. 设置「我阅读字幕的语言」。先关闭「双向通话」，保存后播放一段会议或视频声音，点击「开始」验证字幕。
+3. 需要让对方听到译音时，先安装 BlackHole 等虚拟音频设备，再开启「双向通话」。
+4. 选择真实麦克风，并将「发给对方的译音输出」设为虚拟设备；会议扬声器使用耳机。
+5. 自动管理系统默认设备时，BlackHole 可自动配对；会议软件使用「系统默认麦克风」。其他虚拟设备可关闭自动管理，手动在会议软件中选择对应输入。
 
-| Mode | Speed | Quality | Cost | Voice output | Source transcript | Internet |
-|------|-------|---------|------|--------------|-------------------|----------|
-| ☁️ **Soniox** | ~2 s | 9/10 | ~$0.12/hr | Via TTS (free–$8/hr) | ✅ Yes (dual panel) | Required |
-| ⚡ **OpenAI Realtime** | ~1.5 s | 9.5/10, very idiomatic | **~$4/hr** | Off by default | ✅ Yes (dual panel) | Required |
-| 🌏 **Qwen LiveTranslate Flash** | ~4 s | 8/10, 60+ languages | **Free (preview)** | ❌ None | ❌ None (translation only) | Required |
-| 🖥️ **Local MLX** | ~10 s | 7/10 | Free | Via TTS | ✅ Yes | Not needed |
+双向模式的「我阅读字幕的语言」与「对方听到的语言」必须不同。右上角「发给对方」可独立控制原声、译音和各自音量。暂停、停止及正常退出时会尝试恢复记录的系统音频默认设备；强制结束后只能在下次启动时尝试恢复。
 
-6. Click **Save & Close**
+完整路由、恢复限制和 Excel 词典导入见 [Qwen 双向通话指南](qwen-duplex.md)。
 
-> **Local MLX** requires Apple Silicon (M1+) and ~5 GB disk. Models are downloaded automatically on first use.
->
-> **OpenAI Realtime** supports 13 target languages: en, es, pt, fr, de, it, ru, hi, id, vi, ja, ko, zh. For Thai or other languages, use Soniox. The custom TTS toggle is automatically disabled while OpenAI Realtime is selected (audio comes from the model itself).
+## 日常使用
 
----
+- **实时字幕**：在实时页点击「开始」，结束时点击「停止」。Soniox 等引擎可选择系统声音、麦克风或两者；Qwen 使用独立的通话配置。
+- **双语显示**：在「设置 → 显示设置」或「更多 → 双语字幕」切换原文与译文；可选择上下或双栏显示，见 [实时双语字幕](live-subtitles.md)。
+- **朗读译文**：文字引擎的独立 TTS 可使用本地 Piper 或云端服务，见 [TTS 指南](tts_guide.md)。Qwen 通话的译音由模型直接生成。
+- **音频文件**：进入「音频翻译」，选择文件和目标语言。自动解码与切分需要本机可找到 FFmpeg 和 ffprobe；也可导入已经切分的文件。支持点击译文回放及 SRT/VTT/TXT 导出，见 [音频文件翻译](audio-file-translation.md)。
+- **历史记录**：在「翻译记录」查看已保存的会话；文件翻译结果应在换文件或退出前自行导出。
 
-## Step 7 — Enable TTS Narration (Optional)
+旧版界面截图仅供定位参考，文字、布局和 Qwen 配置以当前版本为准：
 
-Want translations **read aloud**? Three TTS providers are available:
+![旧版 Soniox 设置示例](user_manual/setting_soniox.png)
 
-| Provider | Cost | Quality | Setup |
-|----------|------|---------|-------|
-| 🎙️ **Edge TTS** | Free | Natural | None |
-| 🌐 **Google Chirp 3 HD** | Free 1M chars/mo | Near-human | Google Cloud API key |
-| ✨ **ElevenLabs** | ~$5/mo+ | Premium | ElevenLabs API key |
+## 常用快捷键
 
-### Quick setup (Edge TTS — free):
+在未向输入框、文本框或下拉框输入内容时使用：
 
-1. Settings → **TTS** tab → Provider: **Edge TTS**
-2. Choose a voice → **Save & Close**
-3. On main screen, click the **TTS** button (or `⌘ T`) to enable
+| 快捷键 | 操作 |
+| --- | --- |
+| `⌘ Enter` | 实时页开始／停止 |
+| `⌘ ,` | 打开设置 |
+| `Esc` | 关闭设置或快捷键说明 |
+| `⌘ 1` / `⌘ 2` / `⌘ 3` | 其他引擎的系统声音／麦克风／两者 |
+| `⌘ T` | 切换独立 TTS（支持的引擎） |
+| `?` | 查看快捷键说明 |
 
-### For Google or ElevenLabs:
+## 常见问题
 
-See [TTS Guide](tts_guide.md) for step-by-step API key instructions.
+| 问题 | 检查方向 |
+| --- | --- |
+| 已授权仍提示系统采集被拒绝 | 确认授权的是正在运行的版本，退出后重新打开；旧开发版权限可能需要在系统设置中移除后重新授权 |
+| 开始后没有字幕 | 确认正在播放声音、当前引擎配置正确、网络可用；检查系统录音权限 |
+| Qwen 连接失败 | 核对密钥、业务空间和地域是否一致，以及模型权限、余额和错误提示；不要沿用旧版“只能新加坡”的说明 |
+| 找不到麦克风 | 连接可用的 USB、耳机或其他真实麦克风，再刷新设备列表 |
+| 对方听不到译音 | 检查虚拟设备是否安装、译音开关及音量、输出与会议麦克风是否配对 |
+| 停止后系统声音异常 | 检查系统声音设置中的默认输入／输出；重连原设备后再次尝试恢复，详见 Qwen 指南 |
+| 长音频无法解码或切分 | 检查 FFmpeg／ffprobe，或使用「导入已切分音频」；不要把文件解码失败当作云端密钥错误 |
 
----
+## 检查更新
 
-## Step 8 — Start Translating!
-
-1. Go back to the main screen
-2. Click ▶ (or press `⌘ Enter`) to start
-3. Play any audio on your Mac (YouTube, Zoom, podcasts...)
-4. Translations appear in real-time!
-
-**View modes:**
-- **Single** (default): Translation text only
-- **Dual**: Source | Translation side-by-side (toggle with panel button, bottom-right)
-
-**Font size:** Use A-/A+ buttons (bottom-right on hover) to adjust
-
-### Choosing the translation mode
-
-If you have both a Soniox and an OpenAI key configured, the first time you start a session the app asks which engine to use:
-
-![Choose translation mode — Standard vs OpenAI Realtime](user_manual/openao_entry.png)
-
-You can switch any time from the engine pill in the toolbar.
-
-### Dual-panel view with OpenAI Realtime
-
-In **Dual** view the source transcript appears on the left and the translated text on the right — OpenAI's whisper transcription and translated output stream side-by-side:
-
-![Dual-panel translation running with OpenAI Realtime](user_manual/openai_translate.png)
-
----
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `⌘ Enter` | Start / Stop |
-| `⌘ ,` | Open Settings |
-| `Esc` | Close Settings |
-| `⌘ 1` | Switch to System Audio |
-| `⌘ 2` | Switch to Microphone |
-| `⌘ T` | Toggle TTS narration |
-
----
-
-## Troubleshooting
-
-### No translation text appears
-→ Check **Screen & System Audio Recording** is enabled in System Settings (see Step 4)
-
-### "No API key" error
-→ Open Settings (⚙️) and paste a Soniox key (Step 5) and/or an OpenAI key (Step 5b) for whichever engine you selected
-
-### OpenAI Realtime: engine option is greyed out
-→ The OpenAI key field is empty or the key format is invalid (must start with `sk-`). Paste a fresh key, then click **Test** to verify
-
-### OpenAI Realtime: "Two-way" toggle is hidden
-→ This is expected. Two-way mode is only available on Soniox and Local MLX. Switch engines if you need it
-
-### Translation cost is much higher than expected
-→ Confirm which engine you're using. OpenAI Realtime is ~$4/hour vs Soniox's ~$0.12/hour. The engine indicator shows under the dropdown in Settings
-
-### "No microphone found" error
-→ Mac Mini has no built-in microphone. Connect an external mic (USB, headset, AirPods)
-
-### TTS not working
-→ See [TTS Guide — Troubleshooting](tts_guide.md#troubleshooting)
-
----
-
-## Updating
-
-My Translator includes **auto-update**. When a new version is available:
-
-1. A **green badge** appears on the ⚙️ settings icon
-2. Open Settings → **About** tab → click **Download & Install**
-3. The app will restart automatically with the new version
-
-No need to download DMG files manually for future updates!
+「设置 → 关于 → 检查更新」读取本仓库的最新正式 Release。发现新版后点击前往 GitHub，下载对应 DMG 并替换应用。当前没有自动下载、安装或重启更新功能；Release 草稿不会被当作最新正式版本。

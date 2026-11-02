@@ -1,5 +1,9 @@
 # Hướng Dẫn Cài Đặt My Translator
 
+[简体中文](installation_guide.md) | [English](installation_guide.en.md) | **Tiếng Việt (bản cũ)**
+
+> Tài liệu tiếng Việt này được giữ lại từ phiên bản cũ; thông tin về engine, kiến trúc, chi phí và cập nhật có thể đã lỗi thời. Hãy xem hướng dẫn tiếng Trung hoặc tiếng Anh ở trên cho phiên bản hiện tại.
+
 Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trên macOS.
 
 ---
@@ -17,7 +21,7 @@ Hướng dẫn từng bước cài đặt và sử dụng **My Translator** trê
 
 ## Bước 1 — Tải về
 
-Tải file `.dmg` mới nhất tại: [**Releases — macOS**](https://github.com/phuc-nt/my-translator/releases/latest)
+Tải file `.dmg` mới nhất tại: [**Releases — macOS**](https://github.com/jintianzhouyine/my-translator/releases/latest)
 
 Chọn đúng file:
 - `MyTranslator_x.x.x_aarch64.dmg` — Apple Silicon (M1/M2/M3/M4)
@@ -92,7 +96,7 @@ OpenAI Realtime là engine **cao cấp** — trả về cả văn bản dịch *
 
 > ⚠️ **Cảnh báo chi phí**: OpenAI Realtime đắt hơn Soniox khoảng 34 lần. Phù hợp cho cuộc họp quan trọng cần chất lượng dịch và giọng nói tốt nhất. Dùng hàng ngày, Soniox vẫn là lựa chọn mặc định tốt hơn.
 >
-> 📊 Xem [**Benchmark OpenAI Realtime vs Soniox**](benchmark_openai_vs_soniox_vi.md) để so sánh thực tế.
+> 📊 Xem [**Báo cáo benchmark lịch sử OpenAI Realtime vs Soniox**](../benchmarks/benchmark-260602-1725-latency-3engine-and-soniox-endpoint-tuning-report.en.md) để so sánh thực tế.
 
 Sau khi dán OpenAI key vào Settings, engine **OpenAI Realtime** sẽ chọn được:
 

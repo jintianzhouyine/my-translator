@@ -1,5 +1,7 @@
 # Qwen 双向通话翻译
 
+[中文](qwen-duplex.md) · [English](qwen-duplex.en.md) · [文档目录](README.md)
+
 此模式只需在自己的电脑运行。对方继续使用原有会议软件。
 
 - 你的麦克风 → Qwen 翻译和生成译音 → 虚拟音频输出 → 会议软件的麦克风。

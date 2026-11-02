@@ -1,221 +1,101 @@
-# Installation Guide — Windows
+# Windows 安装与使用指南
 
-Step-by-step guide to install and use **My Translator** on Windows 10/11.
+**简体中文** | [English](installation_guide_win.en.md) | [Tiếng Việt（旧版）](installation_guide_win_vi.md)
 
----
+本指南适用于当前仓库的 Windows x64 发行版。应用界面主要使用中文；英文文档保留中文界面标签，方便对照操作。
 
-## Requirements
+## 准备条件
 
-- Windows 10 or later, 64-bit Intel/AMD (x64)
-- **Soniox mode** (recommended): [Soniox](https://soniox.com) API key (pay-per-use, ~$0.12/hour)
-- **OpenAI Realtime mode** (premium): [OpenAI](https://platform.openai.com) API key (~$4/hour — much pricier, but returns native translated voice — no separate TTS needed)
-- **TTS narration** (optional, text engines only): Edge TTS (free, no API key) or premium providers. See [TTS Guide](tts_guide.md)
+- Windows 10/11，Intel/AMD 64 位（x64）电脑。
+- Microsoft Edge WebView2 Runtime；应用提示缺失时需先安装。
+- 网络，以及所选云服务的 API Key。Qwen 还需要百炼业务空间 ID 和匹配的服务地域。
+- 只有向会议软件发送译音时，才需要另外安装虚拟音频驱动；仅看字幕不需要。
 
----
+当前新版安装包是 x64，不是 32 位 x86，也不是 ARM64。旧 Windows ARM64 安装包保留在 [v0.10.0](https://github.com/jintianzhouyine/my-translator/releases/tag/v0.10.0)。本地 MLX 翻译仅支持 Apple Silicon Mac，Windows 请使用云端引擎；本地 Piper TTS 是单独的功能，可在 Windows 使用。
 
-## Step 1 — Download
+云服务费用和额度以服务商控制台为准。只需配置准备使用的引擎，无需为所有服务申请密钥。
 
-Download the latest `.exe` installer from: [**Releases — Windows**](https://github.com/jintianzhouyine/my-translator/releases/latest)
+## 下载与安装
 
-Starting with v0.10.1, download `MyTranslator_<version>_x64-setup.exe` for 64-bit Intel/AMD PCs.
-This is an x64 application, not a 32-bit x86 build. Older Windows ARM64 installers remain available in
-[v0.10.0](https://github.com/jintianzhouyine/my-translator/releases/tag/v0.10.0).
+1. 从当前仓库的 [Releases](https://github.com/jintianzhouyine/my-translator/releases/latest) 下载 `MyTranslator_<版本>_x64-setup.exe`。
+2. 双击安装包，按向导选择目录并安装。
+3. 安装完成后启动 **My Translator**。
 
----
+Release 中的 `SHA256SUMS` 用于核对安装包校验值。安装包未使用发行者证书签名，Windows SmartScreen 可能显示「Windows 已保护你的电脑」。确认文件来自本仓库后，若系统提供此选项，可点击「更多信息」→「仍要运行」。企业管理策略可能不允许继续，需遵循本机限制。
 
-## Step 2 — Bypass SmartScreen
+安装截图来自旧版，仅供定位参考，界面语言可能不同：
 
-> ⚠️ The app is not yet signed with a certificate. Windows SmartScreen will block it on first run.
+![SmartScreen 提示中的更多信息](user_manual_win/mytrans_win_01.png)
 
-When you see the **"Windows protected your PC"** screen:
+![SmartScreen 提示中的仍要运行](user_manual_win/mytrans_win_02.png)
 
-1. Click **"More info"**
+![安装完成并运行应用](user_manual_win/mytrans_win_06.png)
 
-![SmartScreen warning — click More info](user_manual_win/mytrans_win_01.png)
+## 选择与配置引擎
 
-2. Click **"Run anyway"**
+首次打开选择引擎；应用会记住选择，以后可在实时页工具栏切换。选择引擎不会自动采集声音或启动云端付费会话。
 
-![Click Run anyway](user_manual_win/mytrans_win_02.png)
+| 引擎 | 配置 | 使用方式 |
+| --- | --- | --- |
+| **Qwen3.8 实时通话翻译** | 百炼 API Key、业务空间 ID、北京或新加坡地域 | 对方声音转本机字幕，自己的声音生成译音；支持分方向词典和音频文件翻译 |
+| **Soniox** | Soniox API Key | 实时识别与文字翻译；可启用独立 TTS |
+| **OpenAI Realtime** | OpenAI API Key | 单向云端实时字幕；当前启动流程关闭语音播放，也不使用 Soniox 的双向模式或独立 TTS |
 
----
+打开「设置 → 翻译引擎」，选择所需引擎，填写配置并「保存并关闭」。未填写密钥时仍可选择云引擎，但开始前会校验配置；密钥格式提示不代表模型权限或余额已验证。
 
-## Step 3 — Install
+### Qwen：先测试字幕
 
-The setup wizard will guide you:
+1. 填写同一地域的百炼 API Key、业务空间 ID 与服务地域。
+2. 设置「我阅读字幕的语言」，先关闭「双向通话」。
+3. 将「会议播放／恢复设备」选为实际播放对方声音的耳机，保存后播放会议或视频音频，再点击「开始」。
+4. 在「设置 → 显示设置」开启「双语字幕（原文＋译文）」，即可同时看原文和译文。
 
-1. Click **Next** to start
+### Qwen：把译音发给对方
 
-![Welcome to My Translator Setup](user_manual_win/mytrans_win_03.png)
+1. 安装与电脑系统兼容的虚拟音频驱动，例如标准 VB-CABLE，然后点击「刷新设备」。驱动不包含在本应用中。
+2. 开启「双向通话」，选择真实麦克风，把「对方听到的语言」设为另一种语言。
+3. 把「发给对方的译音输出」设为虚拟线的**播放端**，例如 `CABLE Input`。
+4. 保持自动管理系统默认设备开启时，标准 VB-CABLE（含 A/B/C/D）可自动配对，会议软件选择「系统默认麦克风」。手动管理时，会议麦克风需选择对应的**录音端**，例如 `CABLE Output`。
+5. 会议扬声器与「会议播放／恢复设备」均使用真实耳机，不能设为同一条虚拟线，以免把译音再次识别。
 
-2. Choose install location (default is fine) → click **Next**
+实时页右上角「发给对方」有原声和译音的独立开关及音量。暂停、停止或正常退出时，自动管理会尝试恢复记录的系统输入、输出和通信设备；原设备断开时会提示失败并保留恢复记录。强制结束只能在下次启动时尝试恢复。
 
-![Choose Install Location](user_manual_win/mytrans_win_04.png)
+完整设置、手动路由和 Excel 词典导入见 [Qwen 双向通话指南](qwen-duplex.md)。
 
-3. Wait for installation to complete → click **Next**
+## 日常使用
 
-![Installation Complete](user_manual_win/mytrans_win_05.png)
+- **系统声音**：播放视频或会议声音并点击「开始」，无需为单纯的系统声音字幕安装虚拟音频线。Soniox 等引擎可选择系统声音、麦克风或两者；Qwen 使用独立通话配置。
+- **双语字幕**：支持原文／译文上下或双栏显示，见 [实时双语字幕](live-subtitles.md)。
+- **朗读译文**：文字引擎可以使用本地 Piper 或云端 TTS，见 [TTS 指南](tts_guide.md)。Qwen 的通话译音由翻译模型直接生成。
+- **音频文件**：在「音频翻译」上传本地文件；自动解码和切分需要本机可找到 FFmpeg／ffprobe，或使用「导入已切分音频」。支持点击译文回放以及字幕导出，见 [音频文件翻译](audio-file-translation.md)。
+- **历史记录**：在「翻译记录」查看保存的会话；文件翻译结果应在换文件或退出前自行导出。
 
-4. Check **"Run My Translator"** → click **Finish**
+## 常用快捷键
 
-![Completing Setup — Run My Translator](user_manual_win/mytrans_win_06.png)
+在未向输入框、文本框或下拉框输入内容时使用：
 
----
+| 快捷键 | 操作 |
+| --- | --- |
+| `Ctrl+Enter` | 实时页开始／停止 |
+| `Ctrl+,` | 打开设置 |
+| `Esc` | 关闭设置或快捷键说明 |
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | 其他引擎的系统声音／麦克风／两者 |
+| `Ctrl+T` | 切换独立 TTS（支持的引擎） |
+| `?` | 查看快捷键说明 |
 
-## Step 4 — Configure API Key & Languages
+## 常见问题
 
-The app opens. Click ⚙️ to open **Settings**.
+| 问题 | 检查方向 |
+| --- | --- |
+| 应用无法启动并提示 WebView2 | 按错误提示安装 [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)，然后重新打开应用 |
+| 无法使用麦克风 | 检查 Windows 隐私设置中的麦克风及桌面应用访问权限，并确认设备可用 |
+| 没有系统声音字幕 | 确认正在播放声音，采集设备与实际会议播放设备一致；检查引擎配置、网络及错误信息 |
+| Qwen 连接失败 | 核对密钥、业务空间和地域一致，检查账号模型权限、余额及具体错误 |
+| 对方听不到译音 | 检查译音开关和音量、虚拟设备播放端／录音端是否对应，以及会议是否使用预期麦克风 |
+| 重复翻译或回声 | 用耳机，分开会议播放设备与译音输出，不要从同一虚拟线采集系统声音 |
+| 停止后默认设备异常 | 在系统声音设置确认真实输入／输出，重连原设备后重试恢复；详见 Qwen 指南 |
+| 长音频不能切分 | 检查 FFmpeg／ffprobe，或手动导入连续、完整且有序的已切分文件 |
 
-Configure:
+## 检查更新
 
-1. **API KEYS** — Paste at least one of:
-   - **Soniox API key** — recommended default (~$0.12/hr)
-   - **OpenAI API key** — premium engine with native translated voice (~$4/hr — see warning below)
-   - A green dot ✓ next to each field means the key format looks valid; click **Test** to ping the provider live. Engines without a valid key are greyed out in the engine dropdown.
-2. **Translation Engine** — choose between:
-   - ☁️ **Soniox** (cloud, ~$0.12/hr, ~2 s latency, supports two-way mode)
-   - ⚡ **OpenAI Realtime** (cloud, ~$4/hr, ~1.5 s latency, **native voice included** — two-way and custom TTS unavailable)
-3. **Source** — Choose the source language (or leave as Auto-detect)
-4. **Target** — Choose the target language (e.g., Vietnamese, English...)
-5. **Audio Source** — Choose System Audio (computer sound) or Microphone
-
-![Settings — API Key and Languages](user_manual/mytrans_setting_1.png)
-
-Scroll down for more options:
-
-- **Font Size** — Adjust text size
-- **Max Lines** — How many lines to show
-- **Show original text** — Display source text alongside translation
-- **Custom Context** — Add domain/terms for better accuracy
-
-![Settings — TTS Narration section](user_manual/mytrans_setting_2.png)
-
-Click **Save & Close** when done.
-
-> 💡 **Where to get a Soniox API key?**
-> 1. Go to [console.soniox.com](https://console.soniox.com) → create an account
-> 2. Add funds ($10 minimum, lasts a long time at ~$0.12/hour)
-> 3. Go to **API Keys** → create and copy your key
-
-![Soniox Console — Billing overview](user_manual/mytrans_key_1.png)
-
-> 💡 **Where to get an OpenAI API key?**
-> 1. Go to [platform.openai.com](https://platform.openai.com) → create an account
-> 2. **Settings → Billing** → add a payment method and credits ($10 ≈ ~2.5 hours)
-> 3. **API keys** → **Create new secret key** → copy the key (`sk-...`)
->
-> ⚠️ **Cost warning**: OpenAI Realtime is ~34× pricier than Soniox at provider list rates. Use it for high-stakes meetings; for everyday use, Soniox is the better default. See the [**OpenAI vs Soniox benchmark**](benchmark_openai_vs_soniox.md) for details.
-
-Once a valid OpenAI key is saved, the **OpenAI Realtime** engine becomes selectable in the dropdown:
-
-![Settings — OpenAI Realtime engine with API key](user_manual/setting_openai.png)
-
----
-
-## Step 5 — Enable TTS Narration (Optional)
-
-Want translations **read aloud**? Enable TTS narration:
-
-1. In Settings, scroll to **TTS Narration** section
-2. Check **"Enable narration (read translations aloud)"**
-
-![Settings — TTS disabled](user_manual/mytrans_setting_2.png)
-
-3. Enter your **ElevenLabs API key**
-4. Choose a **voice** (2 female, 2 male — all support Vietnamese)
-5. Click **Save & Close**
-
-![Settings — TTS enabled with API key and voice](user_manual/mytrans_setting_3.png)
-
-> 💡 **Where to get an ElevenLabs API key?**
-> 1. Go to [elevenlabs.io](https://elevenlabs.io) → create an account
-> 2. Subscribe to the **Starter plan** ($5/month, ~60 min of TTS)
-> 3. Go to **Developers → API Keys** → create a key with "Text to Speech" access
-
-![ElevenLabs — Subscription plan](user_manual/mytrans_key_2.png)
-![ElevenLabs — Create API key](user_manual/mytrans_key_3.png)
-
-> 💡 TTS is optional. If disabled, the app works exactly like before — transcript & translate only.
-
----
-
-## Step 6 — Start Translating!
-
-Click ▶ to start. The app will show **Listening...**
-
-Now play any audio on your PC (YouTube, Zoom, podcasts...) and translations appear in real-time!
-
-If TTS is enabled, you can toggle it on/off with the **TTS** button or `Ctrl+T`.
-
-![App translating with TTS enabled](user_manual/mytrans_tts_1.png)
-
-### Choosing the translation mode
-
-If you have both a Soniox and an OpenAI key configured, the first time you start a session the app asks which engine to use:
-
-![Choose translation mode — Standard vs OpenAI Realtime](user_manual/openao_entry.png)
-
-You can switch any time from the engine pill in the toolbar.
-
-### Dual-panel view with OpenAI Realtime
-
-In **Dual** view the source transcript appears on the left and the translated text on the right — OpenAI's whisper transcription and translated output stream side-by-side:
-
-![Dual-panel translation running with OpenAI Realtime](user_manual/openai_translate.png)
-
----
-
-## Tips
-
-- **System Audio** captures whatever is playing on your PC — no virtual cable needed
-- **Microphone** captures live speech from your mic
-- **TTS** reads translations aloud — toggle with the TTS button or `Ctrl+T`
-- The app works as an **overlay** — drag it anywhere, resize as needed
-- Translations are **saved automatically** — click 📋 to view the transcript file
-
----
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Enter` | Start / Stop |
-| `Ctrl+,` | Open Settings |
-| `Esc` | Close Settings |
-| `Ctrl+T` | Toggle TTS narration |
-
----
-
-## Troubleshooting
-
-### SmartScreen blocks the installer
-→ Click **"More info"** → **"Run anyway"** (see Step 2).
-
-### No translation text appears
-→ Check that the API key for your selected engine is correct in Settings (⚙️). Click **Test** to verify connection.
-
-### OpenAI Realtime: engine option is greyed out
-→ The OpenAI key field is empty or the key format is invalid (must start with `sk-`). Paste a fresh key, then click **Test**.
-
-### OpenAI Realtime: "Two-way" toggle is hidden
-→ This is expected. Two-way mode is only available on Soniox. Switch engines if you need it.
-
-### Translation cost is much higher than expected
-→ Confirm which engine you selected. OpenAI Realtime is ~$4/hour vs Soniox's ~$0.12/hour.
-
-### No system audio captured
-→ Make sure audio is playing on your PC. Some apps use exclusive audio mode — try a different source.
-
-### App doesn't start
-→ Make sure WebView2 Runtime is installed. It comes with Windows 10/11, but on older versions you may need to install it from [Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
-
----
-
-## Updating
-
-My Translator includes **auto-update**. When a new version is available:
-
-1. A **green badge** appears on the ⚙️ settings icon
-2. Open Settings → **About** tab → click **Download & Install**
-3. The app will restart automatically with the new version
-
-No need to download installers manually for future updates!
+「设置 → 关于 → 检查更新」读取本仓库最新正式 Release。点击前往 GitHub 下载新版 x64 安装包，关闭应用后运行安装。当前没有自动下载、安装或重启更新功能；Release 草稿不会被当作最新正式版本。
