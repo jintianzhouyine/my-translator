@@ -15,7 +15,7 @@ GitHub Actions 仅接受手动触发，推送代码、推送 tag 或创建 Relea
 
 1. 打开 [Build & Release 工作流](https://github.com/jintianzhouyine/my-translator/actions/workflows/release.yml)。
 2. 点击 **Run workflow**，保留 **Use workflow from: main**。
-3. 在 **Existing version tag to build and publish** 中填写已有 tag，例如 `v0.10.5`。
+3. 在 **Existing version tag to build and publish** 中填写已有 tag，例如 `v0.10.6`。
 4. 再次点击 **Run workflow**。
 
 工作流先校验 tag、应用版本和发布说明，并将 tag 解析为固定的 commit。

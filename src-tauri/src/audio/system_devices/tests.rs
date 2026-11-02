@@ -1,5 +1,5 @@
 use super::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 struct Fake {
     devices: RefCell<Vec<Device>>,
@@ -299,11 +299,72 @@ fn timed_out_switch_forces_rollback_even_if_current_still_matches_and_keeps_reco
 
 #[test]
 fn setter_confirmation_requires_stable_observations() {
-    let mut observations = 0;
-    confirm_default(|| {
-        observations += 1;
-        Ok(observations != 2)
-    })
+    let start = Instant::now();
+    let clock = Cell::new(start);
+    confirm_default_with_clock(
+        // A mismatch just before the stability threshold must restart the wait.
+        || Ok(clock.get().duration_since(start) != Duration::from_millis(80)),
+        || clock.get(),
+        |duration| clock.set(clock.get() + duration),
+    )
     .unwrap();
-    assert!(observations >= 7);
+    assert_eq!(
+        clock.get().duration_since(start),
+        Duration::from_millis(200)
+    );
+}
+
+#[test]
+fn setter_confirmation_accepts_stability_after_delayed_wakeups() {
+    let start = Instant::now();
+    let clock = Cell::new(start);
+    let mut observations = 0;
+    confirm_default_with_clock(
+        || {
+            observations += 1;
+            Ok(observations != 2)
+        },
+        || clock.get(),
+        |duration| {
+            assert_eq!(duration, Duration::from_millis(20));
+            // Sleep is a minimum delay; a busy runner may resume much later.
+            clock.set(clock.get() + Duration::from_millis(120));
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        clock.get().duration_since(start),
+        Duration::from_millis(360)
+    );
+    assert_eq!(observations, 4);
+}
+
+#[test]
+fn setter_confirmation_times_out_when_default_never_matches() {
+    let start = Instant::now();
+    let clock = Cell::new(start);
+    let error = confirm_default_with_clock(
+        || Ok(false),
+        || clock.get(),
+        |duration| clock.set(clock.get() + duration),
+    )
+    .unwrap_err();
+    assert!(matches!(error, DeviceChangeError::Unconfirmed(message) if message.contains("超时")));
+    assert_eq!(clock.get().duration_since(start), Duration::from_secs(2));
+}
+
+#[test]
+fn setter_confirmation_returns_read_errors_without_waiting() {
+    let clock = Instant::now();
+    let error = confirm_default_with_clock(
+        || Err("device unavailable".into()),
+        || clock,
+        |_| panic!("a failed device read must not wait for another observation"),
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        DeviceChangeError::Unconfirmed(message)
+            if message == "音频设备切换无法确认：device unavailable"
+    ));
 }

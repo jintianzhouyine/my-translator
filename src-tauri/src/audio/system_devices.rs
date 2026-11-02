@@ -1,7 +1,12 @@
 //! A persisted lease on system audio defaults. Device IDs survive process restarts;
 //! no system setting changes until both physical routes and the virtual pair are known.
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, sync::Mutex};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 #[cfg(target_os = "macos")]
 #[path = "system_devices/macos.rs"]
@@ -58,29 +63,37 @@ impl std::fmt::Display for DeviceChangeError {
 
 // HAL changes can complete asynchronously. A stable observation also confirms
 // rollback requests submitted while the old default is still visible.
-fn confirm_default(
+fn confirm_default(matches: impl FnMut() -> Result<bool, String>) -> Result<(), DeviceChangeError> {
+    confirm_default_with_clock(matches, Instant::now, std::thread::sleep)
+}
+
+// Inject time so tests can verify stability and timeout without relying on how
+// promptly the OS schedules a sleeping thread. Production uses monotonic time.
+fn confirm_default_with_clock(
     mut matches: impl FnMut() -> Result<bool, String>,
+    mut now: impl FnMut() -> Instant,
+    mut sleep: impl FnMut(Duration),
 ) -> Result<(), DeviceChangeError> {
-    use std::time::{Duration, Instant};
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = now() + Duration::from_secs(2);
     let mut stable_since = None;
     loop {
-        if matches()
-            .map_err(|e| DeviceChangeError::Unconfirmed(format!("音频设备切换无法确认：{e}")))?
-        {
-            let since = stable_since.get_or_insert_with(Instant::now);
-            if since.elapsed() >= Duration::from_millis(100) {
+        let matched = matches()
+            .map_err(|e| DeviceChangeError::Unconfirmed(format!("音频设备切换无法确认：{e}")))?;
+        let observed_at = now();
+        if matched {
+            let since = stable_since.get_or_insert(observed_at);
+            if observed_at.duration_since(*since) >= Duration::from_millis(100) {
                 return Ok(());
             }
         } else {
             stable_since = None;
         }
-        if Instant::now() >= deadline {
+        if observed_at >= deadline {
             return Err(DeviceChangeError::Unconfirmed(
                 "等待系统音频设备切换超时，请检查系统声音设置".into(),
             ));
         }
-        std::thread::sleep(Duration::from_millis(20));
+        sleep(Duration::from_millis(20));
     }
 }
 
