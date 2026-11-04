@@ -148,3 +148,5 @@ npm run dev
 ## 致谢与许可证
 
 本项目基于 [phuc-nt/my-translator](https://github.com/phuc-nt/my-translator) 继续开发。采用 [MIT 许可证](LICENSE)，保留原作者的版权与许可声明。
+
+原版权声明：`Copyright (c) 2026 Personal Translator Contributors`。完整来源与第三方许可说明见[版权与来源说明](COPYRIGHT.md)。

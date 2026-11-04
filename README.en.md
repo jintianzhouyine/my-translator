@@ -148,3 +148,5 @@ See the [documentation index](docs/README.en.md) for Chinese and English edition
 ## Credits and license
 
 This project builds on [phuc-nt/my-translator](https://github.com/phuc-nt/my-translator). It is distributed under the [MIT license](LICENSE), retaining the original copyright and license notice.
+
+Original copyright notice: `Copyright (c) 2026 Personal Translator Contributors`. See [copyright and provenance](COPYRIGHT.en.md) for the upstream attribution and third-party license notes.

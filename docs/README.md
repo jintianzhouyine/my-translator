@@ -39,5 +39,6 @@
 
 ## 协作与保留资料
 
+- 版权与来源：[中文](../COPYRIGHT.md) · [English](../COPYRIGHT.en.md)。
 - 开发规范以中文维护：[项目协作说明](../AGENTS.md)、[LeanSpec 工作流](../specs/README.md)。
 - 保留上游越南语旧指南：[macOS](installation_guide_vi.md)、[Windows](installation_guide_win_vi.md)、[TTS](tts_guide_vi.md)；新功能配置请查阅上面的中英指南。

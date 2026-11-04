@@ -39,5 +39,6 @@ Release records and benchmark reports describe their own versions and test envir
 
 ## Contributing and retained material
 
+- Copyright and provenance: [中文](../COPYRIGHT.md) · [English](../COPYRIGHT.en.md).
 - Contributor instructions are maintained in Chinese: [project instructions](../AGENTS.md), [LeanSpec workflow](../specs/README.md).
 - Legacy Vietnamese guides are retained: [macOS](installation_guide_vi.md), [Windows](installation_guide_win_vi.md), [TTS](tts_guide_vi.md). Use the Chinese or English guides above for new features.
