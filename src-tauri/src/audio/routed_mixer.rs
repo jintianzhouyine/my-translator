@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 const MICROPHONE_RATE: u32 = 16_000;
 const TRANSLATION_RATE: u32 = 24_000;
 const MAX_ORIGINAL_SAMPLES: usize = MICROPHONE_RATE as usize * 120 / 1000;
-const MAX_TRANSLATED_SAMPLES: usize = TRANSLATION_RATE as usize * 5;
+const MAX_TRANSLATED_SAMPLES: usize = TRANSLATION_RATE as usize * 30;
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -143,20 +143,31 @@ impl PlaybackMixer {
         self.original.push(pcm);
         Ok(())
     }
-    pub fn push_translated(&mut self, pcm: &[u8]) -> Result<(), String> {
+    /// Returns true when old translated audio was discarded to keep playback bounded.
+    pub fn push_translated(&mut self, pcm: &[u8]) -> Result<bool, String> {
         if pcm.len() % 2 != 0 {
             return Err("译音 PCM 数据长度无效".into());
         }
         if !self.settings.translated_audible() {
-            return Ok(());
+            return Ok(false);
         }
-        if self.translated.samples.len() + pcm.len() / 2 > MAX_TRANSLATED_SAMPLES {
-            return Err(
-                "译音播放积压超过 5 秒，已停止。请检查输出设备或降低讲话速度后重试。".into(),
-            );
+        // Cloud speech may arrive faster than real time, especially for long
+        // sentences. Permit that burst and retain the newest audio if it exceeds
+        // the bound, without stopping the device or changing microphone audio.
+        let keep_bytes = (MAX_TRANSLATED_SAMPLES * 2).min(pcm.len());
+        let discarded_input = pcm.len() > keep_bytes;
+        let pcm = &pcm[pcm.len() - keep_bytes..];
+        let excess =
+            (self.translated.samples.len() + pcm.len() / 2).saturating_sub(MAX_TRANSLATED_SAMPLES);
+        if excess > 0 {
+            self.translated.samples.drain(..excess);
+        }
+        let discarded = discarded_input || excess > 0;
+        if discarded {
+            self.translated.phase = 0.0;
         }
         self.translated.push(pcm);
-        Ok(())
+        Ok(discarded)
     }
     pub fn next_sample(&mut self) -> f32 {
         let original = self.original.next_sample(self.device_rate) * self.settings.original_volume;
@@ -263,7 +274,7 @@ mod tests {
         assert_eq!(mixer.next_sample(), 0.25);
     }
     #[test]
-    fn mic_overflow_keeps_recent_audio_translation_overflow_is_an_error() {
+    fn mic_and_translation_overflow_keep_recent_audio_with_independent_bounds() {
         let mut mixer = PlaybackMixer::new(both()).unwrap();
         mixer
             .push_original(&pcm(8_192, MAX_ORIGINAL_SAMPLES))
@@ -273,11 +284,65 @@ mod tests {
             .unwrap();
         assert_eq!(mixer.original.samples.len(), MAX_ORIGINAL_SAMPLES);
         assert_eq!(mixer.next_sample(), 0.5);
-        mixer
+        assert!(!mixer
             .push_translated(&pcm(0, MAX_TRANSLATED_SAMPLES))
-            .unwrap();
-        assert!(mixer.push_translated(&pcm(0, 1)).is_err());
+            .unwrap());
+        assert!(mixer.push_translated(&pcm(0, 1)).unwrap());
         assert_eq!(mixer.translated.samples.len(), MAX_TRANSLATED_SAMPLES);
+    }
+
+    #[test]
+    fn a_normal_long_sentence_burst_is_kept_in_full() {
+        let mut mixer = PlaybackMixer::new(MixSettings::default()).unwrap();
+        let count = TRANSLATION_RATE as usize * 12;
+        assert!(!mixer.push_translated(&pcm(8_192, count)).unwrap());
+        assert_eq!(mixer.translated.samples.len(), count);
+        assert_eq!(mixer.next_sample(), 0.25);
+    }
+
+    #[test]
+    fn translation_overflow_discards_oldest_samples_and_preserves_original_audio() {
+        let mut mixer = PlaybackMixer::new(both()).unwrap();
+        mixer.set_device_rate(48_000);
+        mixer.push_original(&pcm(16_384, 160)).unwrap();
+        mixer
+            .push_translated(&pcm(8_192, MAX_TRANSLATED_SAMPLES))
+            .unwrap();
+        assert_eq!(mixer.next_sample(), 0.75);
+        let original_samples = mixer.original.samples.clone();
+        let original_phase = mixer.original.phase;
+        assert!(mixer.push_translated(&pcm(16_384, 10)).unwrap());
+        assert_eq!(mixer.translated.samples.len(), MAX_TRANSLATED_SAMPLES);
+        assert_eq!(mixer.translated.phase, 0.0);
+        assert_eq!(mixer.translated.samples.front(), Some(&0.25));
+        assert_eq!(mixer.translated.samples.back(), Some(&0.5));
+        assert_eq!(mixer.original.samples, original_samples);
+        assert_eq!(mixer.original.phase, original_phase);
+        assert_eq!(mixer.next_sample(), 0.75);
+    }
+
+    #[test]
+    fn an_oversized_packet_keeps_only_its_newest_thirty_seconds() {
+        let mut mixer = PlaybackMixer::new(MixSettings::default()).unwrap();
+        mixer.push_translated(&pcm(16_384, 100)).unwrap();
+        let mut packet = pcm(i16::MIN, 10);
+        packet.extend(pcm(8_192, MAX_TRANSLATED_SAMPLES));
+        assert!(mixer.push_translated(&packet).unwrap());
+        assert_eq!(mixer.translated.samples.len(), MAX_TRANSLATED_SAMPLES);
+        assert!(mixer
+            .translated
+            .samples
+            .iter()
+            .all(|sample| *sample == 0.25));
+        assert_eq!(mixer.next_sample(), 0.25);
+        mixer
+            .set_mix(MixSettings {
+                translated_enabled: false,
+                ..MixSettings::default()
+            })
+            .unwrap();
+        assert!(!mixer.push_translated(&packet).unwrap());
+        assert!(mixer.translated.samples.is_empty());
     }
     #[test]
     fn invalid_pcm_and_gain_are_rejected_without_changing_mix() {

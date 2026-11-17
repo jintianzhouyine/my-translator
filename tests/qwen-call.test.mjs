@@ -16,7 +16,7 @@ const deferred = () => {
 };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25 } = {}) {
+function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25, reconnectDelayMs = 1 } = {}) {
     const calls = [], clients = [], segments = [], errors = [], statuses = [], warnings = [];
     let capture;
     const controller = new QwenCallController({
@@ -32,6 +32,7 @@ function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25 } = {}) {
             if (name === 'stop_duplex_capture') capture?.onmessage({ type: 'stopped' });
         },
         captureDrainTimeoutMs,
+        reconnectDelayMs,
         Channel: class {},
         createClient: () => {
             const client = {
@@ -50,6 +51,131 @@ function fixture({ customInvoke, connect, captureDrainTimeoutMs = 25 } = {}) {
     });
     return { controller, calls, clients, segments, errors, statuses, warnings, capture: () => capture };
 }
+
+async function until(predicate) {
+    for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 2));
+    assert.ok(predicate(), 'expected lifecycle transition');
+}
+
+test('Qwen reconnects only the failed direction without restarting capture or losing prior segments', async () => {
+    const f = fixture();
+    await f.controller.start(settings);
+    const original = f.clients[0];
+    original.onSegment('before', '之前', { itemId: 'same' });
+    original.onError('network_error', 'network lost');
+    original.onClosed('error');
+    f.capture().onmessage({ type: 'audio', source: 'system', pcm: [1, 2] });
+    f.capture().onmessage({ type: 'audio', source: 'microphone', pcm: [3, 4] });
+    await until(() => f.clients.length === 3 && !f.controller.run.recoveries.inbound);
+    assert.equal(f.errors.length, 0);
+    assert.equal(f.controller.state, 'running');
+    assert.equal(f.calls.filter(c => c.name === 'start_duplex_capture').length, 1);
+    assert.equal(f.calls.filter(c => c.name === 'stop_duplex_capture').length, 0);
+    assert.deepEqual(original.packets, []);
+    assert.deepEqual(f.clients[1].packets, [[3, 4]]);
+    f.clients[2].onSegment('after', '之后', { itemId: 'same' });
+    assert.notEqual(f.segments[0][3].id, f.segments[1][3].id);
+    original.onClosed('late old close');
+    original.onSegment('stale', '过期', { itemId: 'same' });
+    f.capture().onmessage({ type: 'audio', source: 'system', pcm: [5, 6] });
+    assert.deepEqual(f.clients[2].packets, [[5, 6]]);
+    assert.equal(f.segments.length, 2);
+    await f.controller.stop();
+});
+
+test('Qwen stop cancels a scheduled reconnect and never recreates clients', async () => {
+    const f = fixture({ reconnectDelayMs: 1000 });
+    await f.controller.start(settings);
+    f.clients[0].onClosed('network lost');
+    await tick();
+    await f.controller.stop();
+    assert.equal(f.clients.length, 2);
+    assert.equal(f.controller.run, null);
+    assert.equal(f.errors.length, 0);
+});
+
+test('Qwen simultaneous direction failures recover independently and announce connected only when both are ready', async () => {
+    const pending = deferred();
+    const f = fixture({ connect: (_, index) => index === 3 ? pending.promise : undefined });
+    await f.controller.start(settings);
+    f.clients[0].onClosed('network lost');
+    f.clients[1].onClosed('network lost');
+    await until(() => f.clients.length === 4);
+    assert.equal(f.statuses.at(-1), 'connecting');
+    pending.resolve();
+    await until(() => f.statuses.at(-1) === 'connected');
+    assert.equal(f.errors.length, 0);
+    await f.controller.stop();
+});
+
+test('Qwen repeated transient handshake failures stop after a bounded retry budget', async () => {
+    const f = fixture({ connect: (_, index) => { if (index >= 2) throw new Error('connection timed out'); } });
+    await f.controller.start(settings);
+    f.clients[0].onClosed('network lost');
+    await until(() => f.errors.length === 1);
+    await f.controller.stop();
+    assert.equal(f.clients.length, 5);
+    assert.match(f.errors[0][1], /自动重连失败/);
+    assert.equal(f.controller.run, null);
+});
+
+test('Qwen authentication errors fail immediately without retrying', async () => {
+    const f = fixture();
+    await f.controller.start(settings);
+    f.clients[0].onError('InvalidApiKey', 'Invalid API key');
+    await f.controller.stop();
+    assert.equal(f.clients.length, 2);
+    assert.equal(f.errors.length, 1);
+});
+
+test('Qwen stop cancels a reconnect handshake without allowing a late client to resume', async () => {
+    const pending = deferred();
+    const f = fixture({ connect: async (client, index) => {
+        if (index >= 2) {
+            client.disconnect = async () => { client.closed++; pending.reject(new Error('cancelled')); };
+            await pending.promise;
+        }
+    } });
+    await f.controller.start(settings);
+    f.clients[0].onClosed('network lost');
+    await until(() => f.clients.length === 3);
+    await f.controller.stop();
+    f.clients[2].onClosed('late close');
+    f.clients[2].onSegment('late', '迟到', { itemId: '1' });
+    assert.equal(f.controller.run, null);
+    assert.equal(f.clients.length, 3);
+    assert.equal(f.segments.length, 0);
+    assert.equal(f.errors.length, 0);
+});
+
+test('Qwen repeated short-lived connections cannot reset the retry budget forever', async () => {
+    const f = fixture();
+    await f.controller.start(settings);
+    for (let i = 0; i < 3; i++) {
+        f.controller.run.clients.inbound.onClosed('network lost');
+        await until(() => f.clients.length === i + 3 && !f.controller.run.recoveries.inbound);
+    }
+    f.controller.run.clients.inbound.onClosed('network lost');
+    await until(() => f.errors.length === 1);
+    await f.controller.stop();
+    assert.equal(f.clients.length, 5);
+    assert.match(f.errors[0][1], /自动重连失败/);
+});
+
+test('Qwen permanent error during a reconnect handshake cancels recovery without deadlock', async () => {
+    const f = fixture({ connect: (client, index) => {
+        if (index >= 2) {
+            client.onError('InvalidApiKey', 'Invalid API key');
+            throw new Error('Invalid API key');
+        }
+    } });
+    await f.controller.start(settings);
+    f.clients[0].onClosed('network lost');
+    await until(() => f.errors.length === 1);
+    await f.controller.stop();
+    assert.equal(f.clients.length, 3);
+    assert.equal(f.controller.run, null);
+});
 
 test('independent directions use different languages/glossaries and only outgoing audio is played', async () => {
     const f = fixture();
@@ -172,7 +298,7 @@ test('final source corrections drain during stop, provisional audio never plays 
     assert.equal(f.calls.some(c => c.name === 'write_translation_audio'), false);
 });
 
-test('playback failure and excessive IPC backlog stop the call rather than accumulate stale speech', async () => {
+test('a real playback failure still releases resources and reports the error', async () => {
     const f = fixture({ customInvoke: name => name === 'write_translation_audio' ? Promise.reject(new Error('full')) : undefined });
     await f.controller.start(settings);
     f.clients[1].onAudioChunk('AQI=');
@@ -180,12 +306,52 @@ test('playback failure and excessive IPC backlog stop the call rather than accum
     await f.controller.stop();
     assert.equal(f.errors.length, 1);
     assert.match(f.errors[0][1], /full/);
+});
+
+test('a long translated sentence can arrive in a burst without stopping either direction', async () => {
     const g = fixture();
     await g.controller.start(settings);
-    g.clients[1].onAudioChunk(Buffer.alloc(240002).toString('base64'));
+    g.clients[1].onAudioChunk(Buffer.alloc(24000 * 2 * 6).toString('base64'));
+    await tick();
+    assert.equal(g.controller.state, 'running');
+    assert.equal(g.errors.length, 0);
+    assert.equal(g.calls.find(c => c.name === 'write_translation_audio').args.pcm.length, 288000);
     await g.controller.stop();
-    assert.equal(g.errors.length, 1);
-    assert.equal(g.calls.some(c => c.name === 'write_translation_audio'), false);
+});
+
+test('excessive playback backlog warns once and discards stale queued audio while captions continue', async () => {
+    const pending = deferred();
+    const f = fixture({ customInvoke: name => name === 'write_translation_audio' ? pending.promise : undefined });
+    await f.controller.start(settings);
+    f.clients[1].onAudioChunk('AQI=');
+    await tick();
+    f.clients[1].onAudioChunk('AwQ=');
+    f.clients[1].onAudioChunk(Buffer.alloc(24000 * 2 * 30).toString('base64'));
+    f.clients[1].onAudioChunk(Buffer.alloc(24000 * 2 * 30).toString('base64'));
+    assert.equal(f.controller.state, 'running');
+    assert.equal(f.errors.length, 0);
+    assert.equal(f.warnings.length, 1);
+    f.clients[1].onSegment('continued', '继续', { itemId: 'new' });
+    assert.equal(f.segments.length, 1);
+    pending.resolve();
+    await tick();
+    assert.equal(f.calls.filter(c => c.name === 'write_translation_audio').length, 1);
+    f.clients[1].onAudioChunk('BQY=');
+    await tick();
+    assert.equal(f.calls.filter(c => c.name === 'write_translation_audio').length, 2);
+    await f.controller.stop();
+});
+
+test('native playback trimming warns without stopping capture or translation', async () => {
+    const f = fixture({ customInvoke: name => name === 'write_translation_audio' ? Promise.resolve(true) : undefined });
+    await f.controller.start(settings);
+    f.clients[1].onAudioChunk('AQI=');
+    await tick();
+    assert.equal(f.controller.state, 'running');
+    assert.equal(f.errors.length, 0);
+    assert.equal(f.warnings.length, 1);
+    assert.equal(f.calls.some(c => c.name === 'stop_duplex_capture'), false);
+    await f.controller.stop();
 });
 
 test('message IDs remain unique across controller instances and preflight rejects invalid routes/languages', async () => {

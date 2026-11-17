@@ -28,6 +28,8 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(1);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(15);
 const AUDIO_QUEUE_SIZE: usize = 16;
 const MAX_AUDIO_CHUNK_BYTES: usize = 32_000;
 const MAX_CLOSE_REASON_CHARS: usize = 160;
@@ -198,6 +200,7 @@ pub async fn qwen_realtime_start(
     let sessions = state.sessions.clone();
 
     tokio::spawn(async move {
+        crate::diagnostics::record_native_event("qwen", "session_started", None);
         let _ = on_event.send(QwenEvent::Status {
             state: "connecting".into(),
             message: None,
@@ -207,6 +210,7 @@ pub async fn qwen_realtime_start(
         let reason = match result {
             Ok(reason) => reason,
             Err(message) => {
+                crate::diagnostics::record_native_failure("qwen", &message);
                 // Do not expose a credential in transport errors, even if a dependency changes its formatting.
                 let message = message.replace(key.as_str(), "[redacted]");
                 let _ = on_event.send(QwenEvent::Error {
@@ -220,6 +224,7 @@ pub async fn qwen_realtime_start(
             map.remove(&session_id);
         }
         let _ = on_event.send(QwenEvent::Closed { reason });
+        crate::diagnostics::record_native_event("qwen", "session_closed", None);
         let _ = done_tx.send(());
     });
     Ok(session_id)
@@ -396,6 +401,35 @@ fn close_error(frame: Option<(u16, &str)>, finishing: bool, api_key: &str) -> St
     }
 }
 
+// A quiet speaker is not a failed session. Probe the WebSocket independently
+// of audio/transcript activity, and accept any incoming frame as proof of life.
+struct Heartbeat {
+    deadline: Instant,
+    awaiting_response: bool,
+}
+
+impl Heartbeat {
+    fn new(now: Instant) -> Self {
+        Self {
+            deadline: now + HEARTBEAT_INTERVAL,
+            awaiting_response: false,
+        }
+    }
+
+    fn received(&mut self, now: Instant) {
+        *self = Self::new(now);
+    }
+
+    fn probe(&mut self, now: Instant) -> Result<(), String> {
+        if self.awaiting_response {
+            return Err("Qwen 连接心跳超时，请检查网络".into());
+        }
+        self.awaiting_response = true;
+        self.deadline = now + HEARTBEAT_TIMEOUT;
+        Ok(())
+    }
+}
+
 async fn run_session(
     cfg: QwenRealtimeConfig,
     url: String,
@@ -427,6 +461,7 @@ async fn run_session(
     let mut ready = false;
     let mut finishing = false;
     let mut finish_deadline = Instant::now() + Duration::from_secs(365 * 24 * 60 * 60);
+    let mut heartbeat = Heartbeat::new(Instant::now());
 
     loop {
         tokio::select! {
@@ -454,7 +489,16 @@ async fn run_session(
                 let _ = timeout(CLOSE_TIMEOUT, socket.close(None)).await;
                 return Err("Qwen 结束等待超时，最后一段翻译可能未完成".into());
             }
+            _ = tokio::time::sleep_until(heartbeat.deadline), if ready && !finishing => {
+                heartbeat.probe(Instant::now())?;
+                timeout(WRITE_TIMEOUT, socket.send(Message::Ping(Vec::new().into()))).await
+                    .map_err(|_| "Qwen 心跳发送超时")?
+                    .map_err(|e| format!("Qwen 心跳发送失败：{e}"))?;
+            }
             message = socket.next() => {
+                if matches!(&message, Some(Ok(_))) {
+                    heartbeat.received(Instant::now());
+                }
                 match message {
                     Some(Ok(Message::Text(text))) => match parse_server_event(&text)? {
                         ServerEvent::Created if !created => {
@@ -504,6 +548,30 @@ async fn run_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn silent_session_remains_healthy_with_transport_replies() {
+        let mut heartbeat = Heartbeat::new(Instant::now());
+        // Silence must not terminate a live call or a quiet file segment.
+        for _ in 0..20 {
+            let sent_at = heartbeat.deadline;
+            assert!(heartbeat.probe(sent_at).is_ok());
+            heartbeat.received(sent_at + Duration::from_secs(1));
+            assert!(!heartbeat.awaiting_response);
+        }
+    }
+
+    #[test]
+    fn unresponsive_transport_fails_after_one_bounded_probe() {
+        let mut heartbeat = Heartbeat::new(Instant::now());
+        let sent_at = heartbeat.deadline;
+        assert!(heartbeat.probe(sent_at).is_ok());
+        assert_eq!(heartbeat.deadline, sent_at + HEARTBEAT_TIMEOUT);
+        assert!(heartbeat
+            .probe(heartbeat.deadline)
+            .unwrap_err()
+            .contains("心跳超时"));
+    }
 
     fn config() -> QwenRealtimeConfig {
         QwenRealtimeConfig {

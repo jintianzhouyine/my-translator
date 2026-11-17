@@ -10,16 +10,23 @@ use futures_util::{SinkExt, StreamExt};
 use http::Request;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::State;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::{timeout, Instant};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::audio::resampler::UpsamplerTo24k;
 
 const OPENAI_REALTIME_URL: &str =
     "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate";
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(1);
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAiRealtimeConfig {
@@ -69,11 +76,12 @@ struct Session {
     audio_tx: mpsc::UnboundedSender<Vec<u8>>,
     stop_tx: mpsc::UnboundedSender<()>,
     upsampler: Mutex<UpsamplerTo24k>,
+    done_rx: oneshot::Receiver<()>,
 }
 
 #[derive(Default)]
 pub struct OpenAiState {
-    sessions: Mutex<HashMap<u64, Session>>,
+    sessions: Arc<Mutex<HashMap<u64, Session>>>,
     next_id: Mutex<u64>,
 }
 
@@ -97,15 +105,18 @@ pub async fn openai_realtime_start(
 
     let (audio_tx, audio_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let (stop_tx, stop_rx) = mpsc::unbounded_channel::<()>();
+    let (done_tx, done_rx) = oneshot::channel();
 
     let session = Session {
         audio_tx,
         stop_tx,
         upsampler: Mutex::new(upsampler),
+        done_rx,
     };
     state.sessions.lock().unwrap().insert(session_id, session);
 
     let event_ch = on_event.clone();
+    let sessions = state.sessions.clone();
     let cfg = OpenAiRealtimeConfig {
         api_key: config.api_key,
         source_language: config.source_language,
@@ -115,21 +126,33 @@ pub async fn openai_realtime_start(
     };
 
     tokio::spawn(async move {
+        crate::diagnostics::record_native_event("openai", "session_started", None);
         let _ = event_ch.send(OpenAiEvent::Status {
             state: "connecting".into(),
             message: None,
         });
 
-        if let Err(e) = run_session(cfg, audio_rx, stop_rx, event_ch.clone()).await {
-            let _ = event_ch.send(OpenAiEvent::Error {
-                code: "session_failed".into(),
-                message: e,
-            });
+        let key = cfg.api_key.trim().to_owned();
+        let result = run_session(
+            cfg,
+            OPENAI_REALTIME_URL,
+            audio_rx,
+            stop_rx,
+            event_ch.clone(),
+        )
+        .await;
+        if let Err(message) = &result {
+            crate::diagnostics::record_native_failure("openai", message);
         }
-
-        let _ = event_ch.send(OpenAiEvent::Closed {
-            reason: "session_ended".into(),
-        });
+        if let Ok(mut sessions) = sessions.lock() {
+            sessions.remove(&session_id);
+        }
+        // The owner emits the only terminal notification, including protocol
+        // session.closed and WebSocket Close. Duplicate Closed events used to
+        // start competing frontend reconnects/capture streams.
+        emit_session_end(result, &key, &event_ch);
+        crate::diagnostics::record_native_event("openai", "session_closed", None);
+        let _ = done_tx.send(());
     });
 
     Ok(session_id)
@@ -161,22 +184,49 @@ pub async fn openai_realtime_stop(
     session_id: u64,
     state: State<'_, OpenAiState>,
 ) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().unwrap();
-    if let Some(session) = sessions.remove(&session_id) {
+    let session = state.sessions.lock().unwrap().remove(&session_id);
+    if let Some(session) = session {
         let _ = session.stop_tx.send(());
+        let _ = timeout(
+            WRITE_TIMEOUT + CLOSE_TIMEOUT + Duration::from_secs(1),
+            session.done_rx,
+        )
+        .await;
     }
     Ok(())
 }
 
+fn emit_session_end(result: Result<String, String>, key: &str, event_ch: &Channel<OpenAiEvent>) {
+    let scrub = |message: String| {
+        if key.is_empty() {
+            message
+        } else {
+            message.replace(key, "[redacted]")
+        }
+    };
+    let reason = match result {
+        Ok(reason) => scrub(reason),
+        Err(message) => {
+            let _ = event_ch.send(OpenAiEvent::Error {
+                code: "session_failed".into(),
+                message: scrub(message),
+            });
+            "error".into()
+        }
+    };
+    let _ = event_ch.send(OpenAiEvent::Closed { reason });
+}
+
 async fn run_session(
     cfg: OpenAiRealtimeConfig,
+    url: &str,
     mut audio_rx: mpsc::UnboundedReceiver<Vec<u8>>,
     mut stop_rx: mpsc::UnboundedReceiver<()>,
     event_ch: Channel<OpenAiEvent>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     // Build WebSocket request with auth headers
     let request = Request::builder()
-        .uri(OPENAI_REALTIME_URL)
+        .uri(url)
         .header("Authorization", format!("Bearer {}", cfg.api_key))
         .header("Host", "api.openai.com")
         .header("Connection", "Upgrade")
@@ -189,66 +239,115 @@ async fn run_session(
         .body(())
         .map_err(|e| format!("build request: {}", e))?;
 
-    let (ws_stream, _) = connect_async(request)
-        .await
-        .map_err(|e| format!("websocket connect: {}", e))?;
+    let (ws_stream, _) = tokio::select! {
+        biased;
+        _ = stop_rx.recv() => return Ok("stopped".into()),
+        result = timeout(CONNECT_TIMEOUT, connect_async(request)) => {
+            result.map_err(|_| "OpenAI 连接超时，请检查网络")?
+                .map_err(|e| format!("websocket connect: {}", e))?
+        }
+    };
 
     let (mut ws_sink, mut ws_stream) = ws_stream.split();
 
     // Send session.update once connected
     let session_update = build_session_update(&cfg);
-    ws_sink
-        .send(Message::Text(session_update.into()))
-        .await
-        .map_err(|e| format!("send session.update: {}", e))?;
+    timeout(
+        WRITE_TIMEOUT,
+        ws_sink.send(Message::Text(session_update.into())),
+    )
+    .await
+    .map_err(|_| "OpenAI 配置发送超时")?
+    .map_err(|e| format!("send session.update: {}", e))?;
 
     let _ = event_ch.send(OpenAiEvent::Status {
         state: "ready".into(),
         message: None,
     });
+    let mut heartbeat = Heartbeat::new(Instant::now());
 
     loop {
         tokio::select! {
             biased;
 
             _ = stop_rx.recv() => {
-                let _ = ws_sink.send(Message::Close(None)).await;
-                break;
+                let _ = timeout(CLOSE_TIMEOUT, ws_sink.send(Message::Close(None))).await;
+                return Ok("stopped".into());
             }
-
-            Some(audio_chunk) = audio_rx.recv() => {
-                let b64 = B64.encode(&audio_chunk);
-                let evt = serde_json::json!({
-                    "type": "session.input_audio_buffer.append",
-                    "audio": b64,
-                });
-                if let Err(e) = ws_sink.send(Message::Text(evt.to_string().into())).await {
-                    return Err(format!("send audio: {}", e));
-                }
+            _ = tokio::time::sleep_until(heartbeat.deadline) => {
+                heartbeat.probe(Instant::now())?;
+                timeout(WRITE_TIMEOUT, ws_sink.send(Message::Ping(Vec::new().into()))).await
+                    .map_err(|_| "OpenAI 心跳发送超时")?
+                    .map_err(|e| format!("OpenAI 心跳发送失败：{e}"))?;
             }
-
             msg = ws_stream.next() => {
+                if matches!(&msg, Some(Ok(_))) {
+                    heartbeat.received(Instant::now());
+                }
                 match msg {
                     Some(Ok(Message::Text(text))) => {
-                        handle_server_event(&text, &event_ch, cfg.audio_output);
+                        if let Some(reason) = handle_server_event(&text, &event_ch, cfg.audio_output) {
+                            let _ = timeout(CLOSE_TIMEOUT, ws_sink.send(Message::Close(None))).await;
+                            return Ok(reason.into());
+                        }
                     }
                     Some(Ok(Message::Binary(_))) => {}
+                    Some(Ok(Message::Ping(data))) => {
+                        timeout(WRITE_TIMEOUT, ws_sink.send(Message::Pong(data))).await
+                            .map_err(|_| "OpenAI 心跳回复超时")?
+                            .map_err(|e| format!("OpenAI 心跳回复失败：{e}"))?;
+                    }
                     Some(Ok(Message::Close(frame))) => {
                         let reason = frame
                             .map(|f| format!("{}: {}", f.code, f.reason))
                             .unwrap_or_else(|| "remote_close".into());
-                        let _ = event_ch.send(OpenAiEvent::Closed { reason });
-                        break;
+                        return Ok(reason);
                     }
                     Some(Ok(_)) => {}
                     Some(Err(e)) => return Err(format!("ws error: {}", e)),
-                    None => break,
+                    None => return Ok("remote_close".into()),
                 }
+            }
+            Some(audio_chunk) = audio_rx.recv() => {
+                let evt = serde_json::json!({
+                    "type": "session.input_audio_buffer.append",
+                    "audio": B64.encode(&audio_chunk),
+                });
+                timeout(WRITE_TIMEOUT, ws_sink.send(Message::Text(evt.to_string().into()))).await
+                    .map_err(|_| "OpenAI 音频发送超时")?
+                    .map_err(|e| format!("send audio: {}", e))?;
             }
         }
     }
+}
 
-    Ok(())
+// Audio or transcript silence is normal. Only missing transport responses to
+// a probe count as a dead connection; outgoing audio does not reset this clock.
+struct Heartbeat {
+    deadline: Instant,
+    awaiting_response: bool,
+}
+
+impl Heartbeat {
+    fn new(now: Instant) -> Self {
+        Self {
+            deadline: now + HEARTBEAT_INTERVAL,
+            awaiting_response: false,
+        }
+    }
+
+    fn received(&mut self, now: Instant) {
+        *self = Self::new(now);
+    }
+
+    fn probe(&mut self, now: Instant) -> Result<(), String> {
+        if self.awaiting_response {
+            return Err("OpenAI 连接心跳超时，请检查网络".into());
+        }
+        self.awaiting_response = true;
+        self.deadline = now + HEARTBEAT_TIMEOUT;
+        Ok(())
+    }
 }
 
 fn build_session_update(cfg: &OpenAiRealtimeConfig) -> String {
@@ -277,15 +376,19 @@ fn build_session_update(cfg: &OpenAiRealtimeConfig) -> String {
     .to_string()
 }
 
-fn handle_server_event(text: &str, event_ch: &Channel<OpenAiEvent>, audio_output: bool) {
+fn handle_server_event(
+    text: &str,
+    event_ch: &Channel<OpenAiEvent>,
+    audio_output: bool,
+) -> Option<&'static str> {
     let value: serde_json::Value = match serde_json::from_str(text) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(_) => return None,
     };
 
     let evt_type = match value.get("type").and_then(|v| v.as_str()) {
         Some(t) => t,
-        None => return,
+        None => return None,
     };
 
     // Dev trace: log every event type (not the full payload — that's noisy)
@@ -347,9 +450,7 @@ fn handle_server_event(text: &str, event_ch: &Channel<OpenAiEvent>, audio_output
             }
         }
         "session.closed" => {
-            let _ = event_ch.send(OpenAiEvent::Closed {
-                reason: "session.closed".into(),
-            });
+            return Some("session.closed");
         }
         "error" => {
             let code = value
@@ -374,5 +475,136 @@ fn handle_server_event(text: &str, event_ch: &Channel<OpenAiEvent>, audio_output
                 other, text
             );
         }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::ipc::InvokeResponseBody;
+
+    fn config() -> OpenAiRealtimeConfig {
+        OpenAiRealtimeConfig {
+            api_key: "test-key".into(),
+            source_language: "auto".into(),
+            target_language: "zh".into(),
+            voice: None,
+            audio_output: false,
+        }
+    }
+
+    fn capture_events() -> (Channel<OpenAiEvent>, Arc<Mutex<Vec<serde_json::Value>>>) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Json(json) = body {
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_str(&json).unwrap());
+            }
+            Ok(())
+        });
+        (channel, events)
+    }
+
+    #[test]
+    fn protocol_close_emits_exactly_one_terminal_event_from_session_owner() {
+        let (channel, events) = capture_events();
+        let reason = handle_server_event(r#"{"type":"session.closed"}"#, &channel, false);
+        assert!(events.lock().unwrap().is_empty());
+        emit_session_end(Ok(reason.unwrap().into()), "test-key", &channel);
+        assert_eq!(
+            *events.lock().unwrap(),
+            vec![serde_json::json!({
+                "type": "closed", "reason": "session.closed"
+            })]
+        );
+    }
+
+    #[test]
+    fn session_failure_reports_error_once_then_one_close_and_redacts_key() {
+        let (channel, events) = capture_events();
+        emit_session_end(
+            Err("connection failed test-key".into()),
+            "test-key",
+            &channel,
+        );
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["type"], "error");
+        assert_eq!(events[0]["message"], "connection failed [redacted]");
+        assert_eq!(
+            events[1],
+            serde_json::json!({"type": "closed", "reason": "error"})
+        );
+    }
+
+    #[test]
+    fn quiet_connection_survives_heartbeats_but_missing_transport_reply_fails() {
+        let mut now = Instant::now();
+        let mut heartbeat = Heartbeat::new(now);
+        // No audio or transcript activity for minutes, only transport replies.
+        for _ in 0..20 {
+            now = heartbeat.deadline;
+            assert!(heartbeat.probe(now).is_ok());
+            assert_eq!(heartbeat.deadline, now + HEARTBEAT_TIMEOUT);
+            now += Duration::from_secs(1);
+            heartbeat.received(now);
+            assert!(!heartbeat.awaiting_response);
+        }
+        assert!(heartbeat.probe(heartbeat.deadline).is_ok());
+        assert!(heartbeat
+            .probe(heartbeat.deadline)
+            .unwrap_err()
+            .contains("心跳超时"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stopped_connect_never_opens_a_network_session() {
+        let (_audio_tx, audio_rx) = mpsc::unbounded_channel();
+        let (stop_tx, stop_rx) = mpsc::unbounded_channel();
+        stop_tx.send(()).unwrap();
+        let (channel, events) = capture_events();
+        let result = timeout(
+            Duration::from_millis(100),
+            run_session(config(), OPENAI_REALTIME_URL, audio_rx, stop_rx, channel),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(result, "stopped");
+        assert!(events.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn remote_websocket_close_notifies_the_frontend_once() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            assert!(matches!(socket.next().await, Some(Ok(Message::Text(_)))));
+            socket.send(Message::Close(None)).await.unwrap();
+        });
+        let (_audio_tx, audio_rx) = mpsc::unbounded_channel();
+        let (_stop_tx, stop_rx) = mpsc::unbounded_channel();
+        let (channel, events) = capture_events();
+        let result = timeout(
+            Duration::from_secs(2),
+            run_session(config(), &url, audio_rx, stop_rx, channel.clone()),
+        )
+        .await
+        .unwrap();
+        emit_session_end(result, "test-key", &channel);
+        server.await.unwrap();
+        let events = events.lock().unwrap();
+        let closed: Vec<_> = events
+            .iter()
+            .filter(|event| event["type"] == "closed")
+            .collect();
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0]["reason"], "remote_close");
     }
 }

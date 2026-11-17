@@ -179,7 +179,13 @@ fn build_stream(
     };
 
     let target_rate = TARGET_SAMPLE_RATE;
-    let err_fn = |err| eprintln!("Microphone input error: {}", err);
+    let error_flag = capture_flag.clone();
+    let err_fn = move |err| {
+        eprintln!("Microphone input error: {}", err);
+        // End this generation so the stream drops its sender and the owner learns
+        // that capture stopped, instead of waiting forever on an empty stream.
+        error_flag.store(false, Ordering::Release);
+    };
 
     let stream = match default_config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
@@ -195,7 +201,9 @@ fn build_stream(
                     target_rate,
                 );
                 if !pcm.is_empty() {
-                    let _ = sender.send(pcm);
+                    if sender.send(pcm).is_err() {
+                        is_capturing.store(false, Ordering::Release);
+                    }
                 }
             },
             err_fn,
@@ -216,7 +224,9 @@ fn build_stream(
                         target_rate,
                     );
                     if !pcm.is_empty() {
-                        let _ = sender.send(pcm);
+                        if sender.send(pcm).is_err() {
+                            is_capturing.store(false, Ordering::Release);
+                        }
                     }
                 },
                 err_fn,

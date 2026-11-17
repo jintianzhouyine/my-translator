@@ -8,6 +8,7 @@ import { validateQwenCall } from '../src/js/qwen-call.js';
 import { languageName } from '../src/js/locale.js';
 import { QwenSettingsUI as RealQwenSettingsUI } from '../src/js/qwen-settings.js';
 import { hasRememberedEngine } from '../src/js/engine-startup.js';
+import { DiagnosticLogger } from '../src/js/diagnostics.js';
 import { QwenAudioControls as RealQwenAudioControls, isQwenMixSetting } from '../src/js/qwen-audio-controls.js';
 
 // Exercise the real controller without importing desktop-only dependencies or booting the app.
@@ -106,7 +107,7 @@ function fixture(initialSettings = {}) {
         },
     };
     const App = vm.runInNewContext(appClass, {
-        settingsManager, document, QWEN_LANGS, validateQwenCall, languageName, hasRememberedEngine, isQwenMixSetting,
+        settingsManager, document, QWEN_LANGS, validateQwenCall, languageName, hasRememberedEngine, isQwenMixSetting, DiagnosticLogger,
         window: { __TAURI__: { core: {} } },
         TranscriptUI: class {
             configure() {}

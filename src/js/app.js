@@ -5,6 +5,7 @@
 
 import { settingsManager } from './settings.js';
 import { hasRememberedEngine } from './engine-startup.js';
+import { DiagnosticLogger } from './diagnostics.js';
 import { TranscriptUI } from './ui.js';
 import { sonioxClient } from './soniox.js';
 import { elevenLabsTTS } from './elevenlabs-tts.js';
@@ -63,9 +64,19 @@ class App {
         this.isPinned = true;     // Always-on-top state
         this.isCompact = false;   // Compact mode (hide control bar)
         this._closing = false;    // Guard so the exit flush runs exactly once
+        this.diagnostics = null;
     }
 
     async init() {
+        this.diagnostics = new DiagnosticLogger({ invoke, context: () => ({
+            engine: this.translationMode, generation: this._startGeneration, source: this.currentSource,
+        }) });
+        // Persist the occurrence without serializing arbitrary exception/rejection payloads.
+        for (const event of ['error', 'unhandledrejection']) {
+            window.addEventListener?.(event, () => {
+                void this.diagnostics.record('error', { reason: 'unknown' });
+            });
+        }
         // Load settings
         await settingsManager.load();
 
@@ -645,6 +656,9 @@ class App {
 
         sonioxClient.onError = (error) => {
             this._showToast(error, 'error');
+        };
+        sonioxClient.onFatalError = (error) => {
+            if (this.translationMode === 'soniox' && this.isRunning) this._failLiveSession(error, false);
         };
 
         sonioxClient.onConfidence = (avgConfidence) => {
@@ -2439,6 +2453,9 @@ class App {
         }
 
         this.isRunning = true;
+        void this.diagnostics?.record('live_started', {
+            mode: this.translationMode === 'qwen' && settings.qwen_duplex_enabled !== false ? 'duplex' : 'caption',
+        });
         this._updateStartButton();
         this._hideEnginePicker();
         this._setEnginePillLocked(true);
@@ -2481,15 +2498,15 @@ class App {
         if (this.translationMode === 'local') {
             await this._startLocalMode(settings);
         } else if (this.translationMode === 'openai') {
-            await this._startOpenAiMode(settings);
+            await this._startOpenAiMode(settings, startGeneration);
         } else if (this.translationMode === 'qwen') {
             await this._startQwenMode(settings, startGeneration);
         } else {
-            await this._startSonioxMode(settings);
+            await this._startSonioxMode(settings, startGeneration);
         }
 
         // Start TTS if enabled — skipped in realtime modes (built-in audio)
-        if (this.ttsEnabled && this.translationMode !== 'openai' && this.translationMode !== 'qwen') {
+        if (this.isRunning && startGeneration === this._startGeneration && this.ttsEnabled && this.translationMode !== 'openai' && this.translationMode !== 'qwen') {
             const tts = this._getActiveTTS();
             this._configureTTS(tts, settings);
             tts.connect();
@@ -2497,30 +2514,70 @@ class App {
         }
     }
 
-    async _startOpenAiMode(settings) {
+    _failLiveSession(message, showToast = true) {
+        if (!this.isRunning) return;
+        void this.diagnostics?.notice(message);
+        void this.diagnostics?.record('live_failed', { reason: 'auto_failure' });
+        if (showToast) this._showToast(message, 'error');
+        const pausing = this.pause('auto_failure');
+        const generation = this._startGeneration;
+        const showFailure = () => {
+            if (!this.isRunning && generation === this._startGeneration) this._updateStatus('error');
+        };
+        void pausing.then(showFailure).catch(error => {
+            console.error('[App] Failed to clean up translation:', error);
+            showFailure();
+        });
+    }
+
+    async _startLiveCapture(channel, generation = this._startGeneration) {
+        const active = () => this.isRunning && generation === this._startGeneration;
+        if (!active()) return;
+        const onError = new Channel();
+        onError.onmessage = message => {
+            if (active()) this._failLiveSession(`音频采集已停止：${message}`);
+        };
+        const starting = Promise.resolve().then(() => {
+            if (active()) return invoke('start_capture', { source: this.currentSource, channel, onError });
+        });
+        this._captureStartPromise = starting;
+        try { await starting; }
+        finally {
+            if (this._captureStartPromise === starting) this._captureStartPromise = null;
+        }
+    }
+
+    async _startOpenAiMode(settings, startGeneration = this._startGeneration) {
         this._updateStatus('connecting');
         const { OpenAiRealtimeClient } = await import('./openai-realtime-client.js');
         const { OpenAiAudioOutputQueue } = await import('./openai-audio-output-queue.js');
+        if (!this.isRunning || startGeneration !== this._startGeneration) return;
 
         // Tell the UI which provider is active so dual-panel rendering routes
         // provisional text to the correct panel (source vs target).
         this.transcriptUI.provider = 'openai';
 
         this.openAiOutputQueue = new OpenAiAudioOutputQueue();
-        this.openAiClient = new OpenAiRealtimeClient();
+        const client = this.openAiClient = new OpenAiRealtimeClient();
+        const current = () => this.openAiClient === client;
+        const active = () => current() && this.isRunning && startGeneration === this._startGeneration;
 
         this.openAiClient.onStatusChange = (state) => {
+            if (!active()) return;
             if (state === 'ready') this._updateStatus('connected');
             else if (state === 'connecting') this._updateStatus('connecting');
         };
         this.openAiClient.onProvisional = (text) => {
+            if (!active()) return;
             this.transcriptUI.setProvisional(text, null, null);
         };
         this.openAiClient.onSourceProvisional = (text) => {
+            if (!active()) return;
             // Source-side provisional: keep dual panel responsive while ASR runs.
             this.transcriptUI.setSourceProvisional?.(text);
         };
         this.openAiClient.onSegment = (sourceText, translatedText) => {
+            if (!current()) return;
             // Pair source + translation atomically so FIFO matching in addTranslation works.
             if (sourceText) this.transcriptUI.addOriginal(sourceText, null, null);
             this.transcriptUI.addTranslation(translatedText);
@@ -2531,54 +2588,54 @@ class App {
             this.transcriptUI.clearProvisional();
         };
         this.openAiClient.onError = (code, msg) => {
+            if (!active()) return;
             console.error('[OpenAI Realtime]', code, msg);
-            this._showToast(`翻译错误（${code}）：${msg}`, 'error');
-            this._updateStatus('error');
+            this._failLiveSession(`翻译错误（${code}）：${msg}`);
+        };
+        this.openAiClient.onWarning = message => {
+            if (active()) this._showToast(message, 'error');
         };
         this.openAiClient.onClosed = (reason) => {
-            console.warn('[OpenAI Realtime] closed:', reason);
-            if (this.isRunning) {
-                this._showToast('OpenAI 连接已断开，正在重连…', 'success');
-                setTimeout(() => {
-                    if (this.isRunning) this._startOpenAiMode(settingsManager.get());
-                }, 1000);
-            }
+            if (active()) this._failLiveSession(`OpenAI 连接已结束：${reason}`);
         };
 
         try {
-            await this.openAiClient.connect({
+            await client.connect({
                 apiKey: settings.openai_api_key,
                 sourceLanguage: settings.source_language || 'auto',
                 targetLanguage: settings.target_language,
                 audioOutput: false,
             }, this.openAiOutputQueue);
         } catch (err) {
+            if (!active()) return;
             this._showToast(`OpenAI 连接失败：${err}`, 'error');
-            await this.pause();
+            await this.pause('auto_failure');
             return;
         }
+        if (!active()) return;
 
         try {
             let audioBatchCount = 0;
             const channel = new window.__TAURI__.core.Channel();
             channel.onmessage = (pcmData) => {
+                if (!active()) return;
                 audioBatchCount++;
                 if (audioBatchCount <= 3 || audioBatchCount % 50 === 0) {
                     console.log(`[OpenAI capture] batch #${audioBatchCount}, size:`, pcmData?.length || 0);
                 }
                 const bytes = new Uint8Array(pcmData);
-                this.openAiClient.sendAudio(bytes.buffer);
+                void client.sendAudio(bytes.buffer).catch(error => {
+                    if (active()) this._failLiveSession(`音频发送失败：${error}`);
+                });
             };
             console.log('[OpenAI] Starting audio capture, source:', this.currentSource);
-            await invoke('start_capture', {
-                source: this.currentSource,
-                channel,
-            });
+            await this._startLiveCapture(channel, startGeneration);
             console.log('[OpenAI] start_capture invoked OK');
         } catch (err) {
+            if (!active()) return;
             console.error('Failed to start audio capture:', err);
             this._showToast(`音频错误：${err}`, 'error');
-            await this.pause();
+            await this.pause('auto_failure');
         }
     }
 
@@ -2608,8 +2665,8 @@ class App {
             },
             onError: (direction, message) => {
                 const label = direction === 'outbound' ? '我的译音' : '对方字幕';
-                this._showToast(`${label}：${message}`, 'error');
-                void this.pause().then(() => this._updateStatus('error'));
+                void this.diagnostics?.notice(message, { direction });
+                if (this.qwenCall === call) this._failLiveSession(`${label}：${message}`);
             },
         });
         this.qwenCall = call;
@@ -2618,12 +2675,12 @@ class App {
         } catch (error) {
             if (startGeneration !== this._startGeneration) return;
             this._showToast(`Qwen 启动失败：${error.message || error}`, 'error');
-            await this.pause();
+            await this.pause('auto_failure');
             this._updateStatus('error');
         }
     }
 
-    async _startSonioxMode(settings) {
+    async _startSonioxMode(settings, startGeneration = this._startGeneration) {
         // Connect to Soniox
         console.log('[App] Connecting to Soniox...');
         this.transcriptUI.provider = 'soniox';
@@ -2646,6 +2703,7 @@ class App {
 
             const channel = new window.__TAURI__.core.Channel();
             channel.onmessage = (pcmData) => {
+                if (!this.isRunning || startGeneration !== this._startGeneration) return;
                 audioChunkCount++;
                 if (audioChunkCount <= 3 || audioChunkCount % 50 === 0) {
                     console.log(`[Audio] Batch #${audioChunkCount}, size:`, pcmData?.length || 0);
@@ -2656,15 +2714,13 @@ class App {
             };
 
             console.log('[App] Starting audio capture, source:', this.currentSource);
-            await invoke('start_capture', {
-                source: this.currentSource,
-                channel: channel,
-            });
+            await this._startLiveCapture(channel, startGeneration);
             console.log('[App] Audio capture started successfully');
         } catch (err) {
+            if (!this.isRunning || startGeneration !== this._startGeneration) return;
             console.error('Failed to start audio capture:', err);
             this._showToast(`音频错误：${err}`, 'error');
-            await this.pause();
+            await this.pause('auto_failure');
         }
     }
 
@@ -2743,7 +2799,7 @@ class App {
         } catch (err) {
             console.error('Failed to start pipeline:', err);
             this._showToast(`本地翻译错误：${err}`, 'error');
-            await this.pause();
+            await this.pause('auto_failure');
             return;
         }
 
@@ -2764,14 +2820,11 @@ class App {
                 }
             };
 
-            await invoke('start_capture', {
-                source: this.currentSource,
-                channel: audioChannel,
-            });
+            await this._startLiveCapture(audioChannel);
             console.log('[App] Audio capture started');
         } catch (err) {
-            console.error('Audio capture failed (pipeline still running):', err);
-            this._showToast(`音频错误：${err}。本地模型仍在加载…`, 'error');
+            console.error('Audio capture failed:', err);
+            this._failLiveSession(`音频错误：${err}`);
         }
     }
 
@@ -2935,8 +2988,11 @@ class App {
     // Pause: stop capture and persist the current chunk, but keep the session
     // file open. The next Start appends a new chunk to the same file. Finalizing
     // into a new file is stopSession()'s job.
-    pause() {
+    pause(reason = 'requested') {
         if (this._pausePromise) return this._pausePromise;
+        if (this.isRunning || this.isStarting) {
+            void this.diagnostics?.record('live_paused', { reason });
+        }
         this._isPausing = true;
         const pausing = this._pause();
         this._pausePromise = pausing;
@@ -2956,8 +3012,15 @@ class App {
 
         // Qwen owns its stop marker and capture-tail drain, so stop through its controller.
         if (this.translationMode !== 'qwen') {
+            const starting = this._captureStartPromise;
             try {
                 await invoke('stop_capture');
+                if (starting) {
+                    // A native start may finish after Stop's first command. Dispose that
+                    // late result before allowing another Start or engine switch.
+                    await starting.catch(() => {});
+                    await invoke('stop_capture');
+                }
             } catch (err) {
                 console.error('Failed to stop audio capture:', err);
             }
@@ -3057,7 +3120,7 @@ class App {
     // Save a snapshot first, then drain the provider before finalizing the file.
     async _flushOnExit() {
         // Restore native audio before waiting for file cleanup or cloud final text.
-        const pause = this.pause().catch(e => console.error('[App] exit flush (pause) failed:', e));
+        const pause = this.pause('app_exit').catch(e => console.error('[App] exit flush (pause) failed:', e));
         const mixSaved = this.qwenAudioControls?.flush();
         this._audioFileStartGeneration = (this._audioFileStartGeneration || 0) + 1;
         try { await this.audioFileTranslation?.dispose(); } catch (e) { console.error('[App] audio file cleanup failed:', e); }
@@ -3154,6 +3217,10 @@ class App {
     // ─── Status ────────────────────────────────────────────
 
     _updateStatus(status) {
+        if (this._diagnosticStatus !== status) {
+            this._diagnosticStatus = status;
+            void this.diagnostics?.record('state_changed', { state: status });
+        }
         const dot = document.getElementById('status-indicator');
         const text = document.getElementById('status-text');
 
@@ -3538,6 +3605,18 @@ class App {
     }
 
     _initAboutTab() {
+        void this._refreshDiagnosticLogInfo();
+        document.getElementById('btn-open-logs')?.addEventListener('click', async () => {
+            const button = document.getElementById('btn-open-logs');
+            if (button) button.disabled = true;
+            try {
+                await this.diagnostics?.flush();
+                await invoke('open_diagnostic_log_dir');
+                await this._refreshDiagnosticLogInfo();
+            } catch (error) {
+                this._showToast(`打开日志目录失败：${error.message || error}`, 'error');
+            } finally { if (button) button.disabled = false; }
+        });
         const versionLabel = document.getElementById('about-version');
         getAppVersion().then(version => {
             if (versionLabel) versionLabel.textContent = `v${version}`;
@@ -3568,7 +3647,19 @@ class App {
         });
     }
 
+    async _refreshDiagnosticLogInfo() {
+        const label = document.getElementById('diagnostic-log-path');
+        if (!label) return;
+        try {
+            const info = await invoke('get_diagnostic_log_info');
+            label.textContent = info.directory;
+        } catch {
+            label.textContent = '日志目录暂不可用，请检查应用数据目录的写入权限。';
+        }
+    }
+
     _showToast(message, type = 'success') {
+        if (type === 'error') void this.diagnostics?.notice(message);
         // Remove existing toast
         const existing = document.querySelector('.toast');
         if (existing) existing.remove();

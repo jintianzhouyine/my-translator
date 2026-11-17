@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::TARGET_SAMPLE_RATE;
@@ -14,29 +14,32 @@ use super::TARGET_SAMPLE_RATE;
 /// because the implementation caused runtime crashes on Windows. Self-exclusion
 /// will be revisited once it can be properly tested on a real Windows machine.
 pub struct SystemAudioCapture {
-    is_capturing: Arc<AtomicBool>,
+    is_capturing: Mutex<Arc<AtomicBool>>,
 }
 
 impl SystemAudioCapture {
     pub fn new() -> Self {
         Self {
-            is_capturing: Arc::new(AtomicBool::new(false)),
+            is_capturing: Mutex::new(Arc::new(AtomicBool::new(false))),
         }
     }
 
     /// Start capturing system audio via WASAPI loopback.
     /// Returns a receiver that yields PCM s16le 16kHz mono audio chunks.
     pub fn start(&self) -> Result<mpsc::Receiver<Vec<u8>>, String> {
-        if self.is_capturing.load(Ordering::SeqCst) {
+        let mut current = self.is_capturing.lock().map_err(|e| e.to_string())?;
+        if current.load(Ordering::Acquire) {
             return Err("Already capturing".to_string());
         }
 
         let (sender, receiver) = mpsc::channel::<Vec<u8>>();
-        let is_capturing = self.is_capturing.clone();
-        is_capturing.store(true, Ordering::SeqCst);
-
+        // A fresh flag prevents a stopped worker from reviving when Start is
+        // pressed again before the OS has finished releasing the old device.
+        let is_capturing = Arc::new(AtomicBool::new(true));
+        *current = is_capturing.clone();
         std::thread::spawn(move || {
-            run_legacy_loopback(sender, is_capturing);
+            run_legacy_loopback(sender, is_capturing.clone());
+            is_capturing.store(false, Ordering::Release);
         });
 
         Ok(receiver)
@@ -44,11 +47,16 @@ impl SystemAudioCapture {
 
     /// Stop capturing
     pub fn stop(&self) {
-        self.is_capturing.store(false, Ordering::SeqCst);
+        if let Ok(current) = self.is_capturing.lock() {
+            current.store(false, Ordering::Release);
+        }
     }
 
     pub fn is_capturing(&self) -> bool {
-        self.is_capturing.load(Ordering::SeqCst)
+        self.is_capturing
+            .lock()
+            .map(|current| current.load(Ordering::Acquire))
+            .unwrap_or(false)
     }
 }
 
@@ -166,7 +174,10 @@ fn run_legacy_loopback(sender: mpsc::Sender<Vec<u8>>, is_capturing: Arc<AtomicBo
 
             let packet_size = match capture_client.GetNextPacketSize() {
                 Ok(size) => size,
-                Err(_) => continue,
+                Err(error) => {
+                    eprintln!("[wasapi] Audio device stopped responding: {error}");
+                    break;
+                }
             };
 
             if packet_size == 0 {
@@ -177,11 +188,11 @@ fn run_legacy_loopback(sender: mpsc::Sender<Vec<u8>>, is_capturing: Arc<AtomicBo
             let mut num_frames = 0u32;
             let mut flags = 0u32;
 
-            if capture_client
-                .GetBuffer(&mut buffer_ptr, &mut num_frames, &mut flags, None, None)
-                .is_err()
+            if let Err(error) =
+                capture_client.GetBuffer(&mut buffer_ptr, &mut num_frames, &mut flags, None, None)
             {
-                continue;
+                eprintln!("[wasapi] Failed to read audio buffer: {error}");
+                break;
             }
 
             if num_frames > 0 && !buffer_ptr.is_null() {
@@ -204,7 +215,10 @@ fn run_legacy_loopback(sender: mpsc::Sender<Vec<u8>>, is_capturing: Arc<AtomicBo
                 }
             }
 
-            let _ = capture_client.ReleaseBuffer(num_frames);
+            if let Err(error) = capture_client.ReleaseBuffer(num_frames) {
+                eprintln!("[wasapi] Failed to release audio buffer: {error}");
+                break;
+            }
         }
 
         // Cleanup: stop, drop COM objects, then CoUninitialize.

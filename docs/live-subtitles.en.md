@@ -12,6 +12,10 @@ Source text and translations may arrive at different times. Qwen pairs them usin
 
 Copied and saved sessions still include the source and translation received by the app. Hiding text does not delete or edit the history. [Audio-file translation](audio-file-translation.en.md) has independent display and export options.
 
+Live translation reconnects automatically after temporary network failures or a server closing the session, with up to three retries for consecutive failures. Qwen restores only the affected direction while the other direction keeps working. OpenAI reconnects without restarting audio capture. If a Soniox session rotation fails while its original connection remains usable, the app keeps that connection.
+
+Pause and Stop cancel pending reconnections. Account or configuration errors, exhausted retries, and audio device failures show an error and leave the running state. Existing captions and session records are retained. After reconnection, translation resumes with new audio; audio during the interruption is not replayed. Silence alone does not trigger a caption timeout.
+
 Automated checks cover stacked/side-by-side display, restoring the previous preference after a failed settings save, uninterrupted changes during a call, and delayed or out-of-order Qwen source text. Recognition quality still needs verification using your API account and meeting audio.
 
 Qwen references: [client events and default ASR](https://help.aliyun.com/zh/model-studio/live-translator-client-events), [server transcription and translation events](https://help.aliyun.com/zh/model-studio/live-translator-server-events).

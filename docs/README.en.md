@@ -13,6 +13,7 @@ Chinese is the default documentation language. English editions use the `.en.md`
 | Windows installation | [中文](installation_guide_win.md) | [English](installation_guide_win.en.md) |
 | Qwen two-way calls and terminology import | [中文](qwen-duplex.md) | [English](qwen-duplex.en.md) |
 | Live bilingual captions | [中文](live-subtitles.md) | [English](live-subtitles.en.md) |
+| Diagnostic logs and troubleshooting | [中文](diagnostics.md) | [English](diagnostics.en.md) |
 | Audio file translation and subtitle playback | [中文](audio-file-translation.md) | [English](audio-file-translation.en.md) |
 | Text-to-speech | [中文](tts_guide.md) | [English](tts_guide.en.md) |
 | Manual builds and releases | [中文](releasing.md) | [English](releasing.en.md) |
@@ -23,6 +24,7 @@ Terminology import example: [Excel glossary](examples/qwen-terms.xlsx).
 
 | Document | 中文 | English |
 | --- | --- | --- |
+| v0.10.7 | [中文](releases/v0.10.7.md) | [English](releases/v0.10.7.en.md) |
 | v0.10.6 | [中文](releases/v0.10.6.md) | [English](releases/v0.10.6.en.md) |
 | v0.10.5 | [中文](releases/v0.10.5.md) | [English](releases/v0.10.5.en.md) |
 | v0.10.4 | [中文](releases/v0.10.4.md) | [English](releases/v0.10.4.en.md) |

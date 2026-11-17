@@ -1,5 +1,7 @@
 mod audio;
 mod commands;
+mod diagnostic_log;
+mod diagnostics;
 mod settings;
 
 use audio::microphone::MicCapture;
@@ -94,6 +96,9 @@ pub fn run() {
             commands::audio_file_source::serve_audio_source(&state, request)
         })
         .setup(|_app| {
+            if let Err(error) = diagnostics::init(_app.path().app_data_dir()?.join("logs")) {
+                eprintln!("[diagnostics] {error}");
+            }
             _app.manage(audio::system_devices::SystemAudioRouteState::new(
                 _app.path().app_data_dir()?,
             ));
@@ -178,6 +183,9 @@ pub fn run() {
             commands::qwen_realtime::qwen_realtime_start,
             commands::qwen_realtime::qwen_realtime_send_audio,
             commands::qwen_realtime::qwen_realtime_stop,
+            diagnostics::write_diagnostic_event,
+            diagnostics::get_diagnostic_log_info,
+            diagnostics::open_diagnostic_log_dir,
             get_platform_info,
             exit_app,
         ])
@@ -208,6 +216,7 @@ pub fn run() {
             }
             // Covers the native window-destroy fallback when the WebView cannot finish cleanup.
             if let tauri::RunEvent::Exit = event {
+                diagnostics::record_native_event("app", "app_exited", Some("app_exit"));
                 if let Err(error) = restore_audio_on_exit(app_handle) {
                     eprintln!("[audio restore] {error}");
                 }

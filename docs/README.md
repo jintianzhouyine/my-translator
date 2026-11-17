@@ -13,6 +13,7 @@
 | Windows 安装 | [中文](installation_guide_win.md) | [English](installation_guide_win.en.md) |
 | Qwen 双向通话与术语导入 | [中文](qwen-duplex.md) | [English](qwen-duplex.en.md) |
 | 实时双语字幕 | [中文](live-subtitles.md) | [English](live-subtitles.en.md) |
+| 诊断日志与故障排查 | [中文](diagnostics.md) | [English](diagnostics.en.md) |
 | 音频文件翻译与字幕回放 | [中文](audio-file-translation.md) | [English](audio-file-translation.en.md) |
 | TTS 语音朗读 | [中文](tts_guide.md) | [English](tts_guide.en.md) |
 | 手动构建和发布 | [中文](releasing.md) | [English](releasing.en.md) |
@@ -23,6 +24,7 @@
 
 | 文档 | 中文 | English |
 | --- | --- | --- |
+| v0.10.7 | [中文](releases/v0.10.7.md) | [English](releases/v0.10.7.en.md) |
 | v0.10.6 | [中文](releases/v0.10.6.md) | [English](releases/v0.10.6.en.md) |
 | v0.10.5 | [中文](releases/v0.10.5.md) | [English](releases/v0.10.5.en.md) |
 | v0.10.4 | [中文](releases/v0.10.4.md) | [English](releases/v0.10.4.en.md) |

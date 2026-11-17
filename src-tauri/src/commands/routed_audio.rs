@@ -63,7 +63,7 @@ pub fn write_translation_audio(
     output_id: u64,
     pcm: Vec<u8>,
     state: State<'_, RoutedAudioState>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     state.write_output(output_id, &pcm)
 }
 

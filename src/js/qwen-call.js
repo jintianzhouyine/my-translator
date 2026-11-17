@@ -2,8 +2,12 @@
 // Dependency injection keeps lifecycle and routing testable without microphones or API keys.
 import { validateQwenSettings } from './qwen-settings.js';
 import { readQwenMix, mixSettings } from './qwen-audio-controls.js';
+import { isRecoverableRealtimeError } from './realtime-recovery.js';
 
 let nextRunId = 0;
+// Cloud speech may arrive faster than playback, especially for a long sentence.
+// This is a burst buffer, not a limit on the duration of a translated sentence.
+const MAX_OUTPUT_QUEUE_BYTES = 24000 * 2 * 30;
 
 export function validateQwenCall(settings) {
     if (!settings.qwen_api_key?.trim()) throw new Error('请填写 Qwen（百炼）API 密钥。');
@@ -12,9 +16,12 @@ export function validateQwenCall(settings) {
 
 export class QwenCallController {
     constructor({ invoke, Channel, createClient, onSegment = () => {}, onProvisional = () => {},
-        onStateChange = () => {}, onError = () => {}, onWarning = () => {}, captureDrainTimeoutMs = 1000 }) {
+        onStateChange = () => {}, onError = () => {}, onWarning = () => {}, captureDrainTimeoutMs = 1000,
+        reconnectDelayMs = 1000, maxReconnectAttempts = 3 }) {
         Object.assign(this, { invoke, Channel, createClient, onSegment, onProvisional, onStateChange, onError, onWarning });
         this.captureDrainTimeoutMs = captureDrainTimeoutMs;
+        this.reconnectDelayMs = reconnectDelayMs;
+        this.maxReconnectAttempts = maxReconnectAttempts;
         this.run = null;
         this.state = 'idle';
         this._startPromise = null;
@@ -28,6 +35,7 @@ export class QwenCallController {
             id: ++nextRunId, clients: {}, outputId: null, closing: false, failed: false,
             outputTail: Promise.resolve(), queuedAudioBytes: 0, settings: { ...settings },
             mix: readQwenMix(settings), mixTail: Promise.resolve(), audioGeneration: 0, routeId: null,
+            recoveries: {}, clientConfigs: {}, connectionIds: {}, retryCounts: {}, connectedAt: {}, started: false,
         };
         this.run = run;
         this.state = 'connecting';
@@ -79,12 +87,14 @@ export class QwenCallController {
                 region: settings.qwen_region,
             };
             const incoming = this._client(run, 'inbound');
-            const connecting = [incoming.connect({ ...common, targetLanguage: settings.qwen_my_language,
-                audioOutput: false, phrases: settings.qwen_glossary_inbound || {} })];
+            run.clientConfigs.inbound = { ...common, targetLanguage: settings.qwen_my_language,
+                audioOutput: false, phrases: settings.qwen_glossary_inbound || {} };
+            const connecting = [incoming.connect(run.clientConfigs.inbound)];
             if (duplex) {
                 const outgoing = this._client(run, 'outbound');
-                connecting.push(outgoing.connect({ ...common, targetLanguage: settings.qwen_peer_language,
-                    audioOutput: true, phrases: settings.qwen_glossary_outbound || {} }));
+                run.clientConfigs.outbound = { ...common, targetLanguage: settings.qwen_peer_language,
+                    audioOutput: true, phrases: settings.qwen_glossary_outbound || {} };
+                connecting.push(outgoing.connect(run.clientConfigs.outbound));
             }
             await Promise.all(connecting);
             this._checkActive(run);
@@ -107,9 +117,9 @@ export class QwenCallController {
                     this._fail(run, direction, `音频采集失败：${event.message}`);
                 } else if (event.type === 'audio' && ['microphone', 'system'].includes(event.source)) {
                     const client = run.clients[direction];
-                    if (client) {
+                    if (client && !run.recoveries[direction]) {
                         Promise.resolve(client.sendAudio(new Uint8Array(event.pcm).buffer))
-                            .catch((error) => this._fail(run, direction, String(error)));
+                            .catch((error) => this._connectionFailed(run, direction, client, 'audio_send_failed', String(error)));
                     }
                 }
             };
@@ -125,6 +135,8 @@ export class QwenCallController {
                 throw error;
             }
             this._checkActive(run);
+            run.started = true;
+            for (const direction of Object.keys(run.clients)) run.connectedAt[direction] = Date.now();
             this.state = 'running';
             this.onStateChange('connected');
         } catch (error) {
@@ -142,27 +154,94 @@ export class QwenCallController {
     _client(run, direction) {
         const client = this.createClient();
         run.clients[direction] = client;
+        const connectionId = run.connectionIds[direction] = (run.connectionIds[direction] || 0) + 1;
+        const current = () => this.run === run && run.clients[direction] === client;
         // Keep final text while draining session.finish, but never play further audio after Stop.
         client.onSegment = (source, target, meta = {}) => {
-            if (this.run === run) this.onSegment(direction, source, target, this._meta(run, direction, meta));
+            if (current()) this.onSegment(direction, source, target, this._meta(run, direction, meta, connectionId));
         };
         client.onProvisional = (text, meta = {}) => {
-            if (this.run === run && !run.closing) this.onProvisional(direction, text, this._meta(run, direction, meta));
+            if (current() && !run.closing) this.onProvisional(direction, text, this._meta(run, direction, meta, connectionId));
         };
         client.onAudioChunk = (base64) => {
-            if (direction === 'outbound' && this.run === run && !run.closing) this._enqueueAudio(run, base64);
+            if (direction === 'outbound' && current() && !run.closing && !run.recoveries[direction]) this._enqueueAudio(run, base64);
         };
-        client.onError = (code, message) => this._fail(run, direction, `${message || code}`);
+        client.onError = (code, message) => this._connectionFailed(run, direction, client, code, message);
         client.onClosed = (reason) => {
-            if (!run.closing) this._fail(run, direction, `翻译连接已断开：${reason || '请重新开始'}`);
+            this._connectionFailed(run, direction, client, 'closed', `翻译连接已断开：${reason || ''}`);
         };
         return client;
     }
 
-    _meta(run, direction, meta) {
+    _connectionFailed(run, direction, client, code, message) {
+        if (this.run !== run || run.clients[direction] !== client || run.closing || run.failed) return;
+        const failure = message || code || '翻译连接已断开';
+        if (!run.started || !isRecoverableRealtimeError(code, failure)) {
+            this._fail(run, direction, failure);
+            return;
+        }
+        const existing = run.recoveries[direction];
+        if (existing) {
+            // Error + closed are often delivered together; only one retry owns this direction.
+            existing.error ||= failure;
+            return;
+        }
+        if (Date.now() - run.connectedAt[direction] >= 30000) run.retryCounts[direction] = 0;
+        const recovery = { error: failure, cancelWait: null, promise: null };
+        run.recoveries[direction] = recovery;
+        if (direction === 'outbound') run.audioGeneration++;
+        this.onStateChange('connecting');
+        recovery.promise = this._reconnect(run, direction, recovery);
+    }
+
+    async _reconnect(run, direction, recovery) {
+        const active = () => this.run === run && !run.closing && !run.failed;
+        try {
+            while (active()) {
+                const previous = run.clients[direction];
+                await previous.disconnect().catch(() => {});
+                if (!active()) return;
+                const attempt = (run.retryCounts[direction] || 0) + 1;
+                run.retryCounts[direction] = attempt;
+                if (attempt > this.maxReconnectAttempts) {
+                    this._fail(run, direction, `自动重连失败：${recovery.error}。请检查网络后重新开始。`);
+                    return;
+                }
+                const label = direction === 'outbound' ? '我的译音' : '对方字幕';
+                this.onWarning(`${label}连接中断，正在自动重连（${attempt}/${this.maxReconnectAttempts}）…`);
+                await new Promise(resolve => {
+                    const timer = setTimeout(resolve, this.reconnectDelayMs * attempt);
+                    recovery.cancelWait = () => { clearTimeout(timer); resolve(); };
+                });
+                recovery.cancelWait = null;
+                if (!active()) return;
+                const client = this._client(run, direction);
+                recovery.error = null;
+                try {
+                    await client.connect(run.clientConfigs[direction]);
+                    if (!active()) return;
+                    if (recovery.error) throw new Error(recovery.error);
+                    run.connectedAt[direction] = Date.now();
+                    delete run.recoveries[direction];
+                    if (Object.keys(run.recoveries).length === 0) this.onStateChange('connected');
+                    return;
+                } catch (error) {
+                    recovery.error = String(error.message || error);
+                    if (active() && !isRecoverableRealtimeError('', recovery.error)) {
+                        this._fail(run, direction, recovery.error);
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            if (active()) this._fail(run, direction, String(error.message || error));
+        }
+    }
+
+    _meta(run, direction, meta, connectionId) {
         // IDs from different connections (or successive calls) can collide.
         const settings = run.settings;
-        return { ...meta, id: `${run.id}:${direction}:${meta.itemId}`, direction,
+        return { ...meta, id: `${run.id}:${direction}:${connectionId}:${meta.itemId}`, direction,
             sourceLanguage: direction === 'outbound' ? settings.qwen_my_language : settings.qwen_peer_language,
             targetLanguage: direction === 'outbound' ? settings.qwen_peer_language : settings.qwen_my_language };
     }
@@ -174,13 +253,19 @@ export class QwenCallController {
         try {
             const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
             if (bytes.length % 2) throw new Error('收到不完整的语音数据。');
+            // Skip an excessive burst rather than ending both translation directions.
+            // Invalidate queued work so old speech cannot be replayed much later.
+            if (run.queuedAudioBytes + bytes.length > MAX_OUTPUT_QUEUE_BYTES) {
+                run.audioGeneration++;
+                this._warnOutputBacklog(run);
+                return;
+            }
             run.queuedAudioBytes += bytes.length;
-            // Bound the IPC backlog independently of the native playback buffer (24 kHz PCM16).
-            if (run.queuedAudioBytes > 24000 * 2 * 5) throw new Error('译音发送积压，请检查输出设备后重新开始。');
             run.outputTail = run.outputTail.then(async () => {
                 try {
                     if (this.run === run && !run.closing && run.outputId != null && generation === run.audioGeneration) {
-                        await this.invoke('write_translation_audio', { outputId: run.outputId, pcm: Array.from(bytes) });
+                        const dropped = await this.invoke('write_translation_audio', { outputId: run.outputId, pcm: Array.from(bytes) });
+                        if (dropped === true) this._warnOutputBacklog(run);
                     }
                 } finally {
                     run.queuedAudioBytes -= bytes.length;
@@ -189,6 +274,14 @@ export class QwenCallController {
         } catch (error) {
             this._fail(run, 'outbound', String(error));
         }
+    }
+
+    _warnOutputBacklog(run) {
+        if (this.run !== run || run.closing) return;
+        const now = Date.now();
+        if (run.lastBacklogWarning != null && now - run.lastBacklogWarning < 30000) return;
+        run.lastBacklogWarning = now;
+        this.onWarning('译音播放积压，已跳过部分过期译音；字幕和通话继续。请检查输出设备。');
     }
 
     setMix(mix) {
@@ -237,6 +330,7 @@ export class QwenCallController {
     }
 
     async _cleanup(run) {
+        for (const recovery of Object.values(run.recoveries)) recovery.cancelWait?.();
         // Also called after late startup results, so cancellation cannot strand a native resource.
         // Clear the native playback queue immediately; capture may still deliver its final PCM.
         const outputId = run.outputId;
@@ -261,6 +355,7 @@ export class QwenCallController {
         const stopping = Object.values(run.clients).map((client) => client.disconnect());
         stopping.push(outputStopped);
         await Promise.allSettled(stopping);
+        await Promise.allSettled(Object.values(run.recoveries).map(recovery => recovery.promise));
         await run.outputTail;
         await run.mixTail;
     }

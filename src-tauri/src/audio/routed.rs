@@ -145,6 +145,11 @@ impl RoutedAudioState {
                 // If startup already succeeded, this is a runtime error.
                 let _ = ready_tx.try_send(Err(message.clone()));
                 if !worker_stop.load(Ordering::Acquire) {
+                    crate::diagnostics::record_native_event(
+                        "qwen",
+                        "session_failed",
+                        Some("capture"),
+                    );
                     let _ = on_audio.send(CaptureEvent::Error {
                         source: "capture".into(),
                         message,
@@ -215,6 +220,11 @@ impl RoutedAudioState {
             if let Err(error) = result {
                 let _ = ready_tx.try_send(Err(error.clone()));
                 if !worker_stop.load(Ordering::Acquire) {
+                    crate::diagnostics::record_native_event(
+                        "qwen",
+                        "session_failed",
+                        Some("output"),
+                    );
                     let _ = on_error.send(error);
                 }
             }
@@ -242,19 +252,21 @@ impl RoutedAudioState {
         }
     }
 
-    pub fn write_output(&self, id: u64, pcm: &[u8]) -> Result<(), String> {
+    pub fn write_output(&self, id: u64, pcm: &[u8]) -> Result<bool, String> {
         let output = self.output.lock().map_err(|e| e.to_string())?;
         let output = output
             .as_ref()
             .filter(|output| output.id == id && !output.stop.load(Ordering::Acquire))
             .ok_or_else(|| "译音输出已停止或会话已失效".to_string())?;
         let mut queue = output.queue.lock().map_err(|e| e.to_string())?;
-        if let Err(error) = queue.push_translated(pcm) {
-            queue.clear();
-            output.stop.store(true, Ordering::Release);
-            return Err(error);
+        match queue.push_translated(pcm) {
+            Ok(discarded) => Ok(discarded),
+            Err(error) => {
+                queue.clear();
+                output.stop.store(true, Ordering::Release);
+                Err(error)
+            }
         }
-        Ok(())
     }
 
     pub fn set_mix(&self, id: u64, mix: MixSettings) -> Result<(), String> {
@@ -725,8 +737,10 @@ fn output_worker(
         .set_device_rate(config.sample_rate.0);
     let error_stop = stop.clone();
     let error = move |error: cpal::StreamError| {
-        error_stop.store(true, Ordering::Release);
-        let _ = on_error.send(format!("译音输出设备错误：{error}"));
+        if !error_stop.swap(true, Ordering::AcqRel) {
+            crate::diagnostics::record_native_event("qwen", "session_failed", Some("output"));
+            let _ = on_error.send(format!("译音输出设备错误：{error}"));
+        }
     };
     let channels = config.channels as usize;
     let stream = match supported.sample_format() {
@@ -846,6 +860,39 @@ mod tests {
         output.queue.lock().unwrap().clear();
         output.push(&[0, 64, 0, 64]).unwrap();
         assert_eq!(output.queue.lock().unwrap().next_sample(), 0.0);
+    }
+
+    #[test]
+    fn translated_bursts_report_trimming_without_stopping_output_or_original_audio() {
+        let state = RoutedAudioState::default();
+        let stop = Arc::new(AtomicBool::new(false));
+        let queue = Arc::new(Mutex::new(
+            PlaybackMixer::new(MixSettings {
+                original_enabled: true,
+                ..MixSettings::default()
+            })
+            .unwrap(),
+        ));
+        queue
+            .lock()
+            .unwrap()
+            .push_original(&[0, 64, 0, 64])
+            .unwrap();
+        *state.output.lock().unwrap() = Some(OutputHandle {
+            id: 1,
+            device_id: "test-device".into(),
+            stop: stop.clone(),
+            queue: queue.clone(),
+            thread: None,
+        });
+        assert!(!state.write_output(1, &vec![0; 24_000 * 2 * 12]).unwrap());
+        assert!(state.write_output(1, &vec![0; 24_000 * 2 * 31]).unwrap());
+        assert!(!stop.load(Ordering::Acquire));
+        assert_eq!(queue.lock().unwrap().next_sample(), 0.5);
+        assert!(state.write_output(1, &[0, 0]).is_ok());
+        assert!(state.write_output(2, &[0, 0]).is_err());
+        assert!(state.write_output(1, &[0]).is_err());
+        assert!(stop.load(Ordering::Acquire));
     }
 
     #[test]

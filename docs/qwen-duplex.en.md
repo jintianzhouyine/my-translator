@@ -49,6 +49,8 @@ The **发给对方** (Audio sent to the other participant) area at the top right
 
 You can enable both, either one or neither. Changes apply immediately and are saved without restarting translation. Muting the original does not disable recognition. Muting translation does not stop captions, cloud sessions or billing. Muting clears queued audio for that stream; enabling it again does not replay audio from the muted interval.
 
+Cloud speech may arrive in a burst for a long sentence. The app buffers up to 30 seconds; exceeding the limit skips some stale translated audio and shows a warning while captions and the call continue. It no longer ends the entire call merely because the queue exceeds five seconds. An actual output device failure still stops the call and shows an error.
+
 Original speech is sent immediately, while translation arrives later, so they can overlap when both are enabled. The native mixer resamples each stream, adds them and limits clipping. The original-audio buffer is limited to 120ms and the translation buffer to 5 seconds. These buffer limits do not describe end-to-end translation latency. Automatic ducking of the original audio is not implemented.
 
 The app remembers the selected engine. Users with existing configuration enter the live view directly; new users see onboarding until they choose an engine. Engines can be changed later from the toolbar. Remembering an engine does not automatically start capture or a paid session.
@@ -98,6 +100,8 @@ Local verification on Apple Silicon macOS, **2026-10-28**:
 - Windows ARM builds and real Bailian/virtual-driver/meeting-app calls were not verified. The release workflow includes Rust tests for its target platforms, to be run in available build environments.
 
 For first use, verify incoming captions in caption-only mode, then configure a virtual device and test outgoing audio. Confirm that only your voice triggers outgoing translation, incoming speech produces local captions, and stopping does not send old queued audio.
+
+Temporary connection failures during a call trigger up to three retries per affected direction while the other direction continues. Reconnection keeps system audio routing and existing captions, then resumes with new audio; audio during the interruption is not replayed. Pause and Stop cancel reconnection. Account errors, exhausted retries and disconnected audio devices show an error and leave the running state. Use **设置 → 关于 → 打开日志目录** to share [diagnostic logs](diagnostics.en.md) from the last seven dates, together with the approximate time of the issue.
 
 Audio controls and recovery verification on **2026-11-01**: 282 JavaScript tests and 48 full macOS Rust unit tests passed. The Windows system-device module passed an x64 GNU compile check. A browser at 900×500 was used to check both audio switches, volume sliders and the settings entry. These checks did not change system defaults, record audio or call the cloud service. Real BlackHole/VB-CABLE switching, recovery and mixing with meeting apps remain to be verified on hardware.
 

@@ -68,6 +68,12 @@ if (!window.__TAURI__ && location.port === '3111') {
             invoke: async (cmd, args) => {
                 console.log('[tauri-mock] invoke:', cmd);
                 switch (cmd) {
+                    case 'get_diagnostic_log_info':
+                        return { directory: '浏览器预览：日志仅在桌面安装版保存', retentionDays: 7 };
+                    case 'write_diagnostic_event':
+                        return null;
+                    case 'open_diagnostic_log_dir':
+                        throw new Error('请在桌面安装版中打开日志目录');
                     case 'get_settings':
                         return mockSettings;
                     case 'save_settings':
