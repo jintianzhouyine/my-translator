@@ -74,7 +74,7 @@ function fixture({ diagnostics = false } = {}) {
         getAppVersion: async () => '0.0.0-test', PROJECT_URL: 'https://example.test/project',
         PROJECT_ISSUES_URL: 'https://example.test/issues', openProjectUrl: async () => {},
         setLiveBadge() {}, startAutoHideWatch() {}, stopAutoHideWatch() {}, requestAnimationFrame: fn => fn(),
-        setTimeout: (fn, delay) => delay >= 3000 ? 0 : setTimeout(fn, delay), clearTimeout,
+        setTimeout: (fn, delay) => delay >= 2000 ? 0 : setTimeout(fn, delay), clearTimeout,
     });
     const app = new App();
     app.isRunning = true;

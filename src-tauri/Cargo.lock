@@ -2402,7 +2402,7 @@ dependencies = [
 
 [[package]]
 name = "my-translator"
-version = "0.10.8"
+version = "0.10.9"
 dependencies = [
  "base64 0.22.1",
  "bzip2",

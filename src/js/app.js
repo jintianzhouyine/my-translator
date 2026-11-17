@@ -65,6 +65,8 @@ class App {
         this.isCompact = false;   // Compact mode (hide control bar)
         this._closing = false;    // Guard so the exit flush runs exactly once
         this.diagnostics = null;
+        this._activeToast = null;
+        this._pendingToast = null;
     }
 
     async init() {
@@ -3661,26 +3663,48 @@ class App {
 
     _showToast(message, type = 'success') {
         if (type === 'error') void this.diagnostics?.notice(message);
-        // Remove existing toast
-        const existing = document.querySelector('.toast');
-        if (existing) existing.remove();
+        if (this._activeToast?.type === 'error') {
+            // Keep the error readable for its full lifetime. Coalesce later
+            // notices, preserving a pending error over a routine status update.
+            if (type === 'error' && message === this._activeToast.message) return;
+            if (type === 'error' || this._pendingToast?.type !== 'error') {
+                this._pendingToast = { message, type };
+            }
+            return;
+        }
+        this._renderToast({ message, type });
+    }
+
+    _renderToast({ message, type }) {
+        if (this._activeToast) {
+            clearTimeout(this._activeToast.timer);
+            this._activeToast.element.remove();
+        }
 
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
         document.body.appendChild(toast);
+        const active = this._activeToast = { message, type, element: toast, timer: null };
 
-        // Trigger animation
+        // Count the display time from the frame that makes the notice visible.
         requestAnimationFrame(() => {
+            if (this._activeToast !== active) return;
             toast.classList.add('show');
+            active.timer = setTimeout(() => {
+                if (this._activeToast !== active) return;
+                this._activeToast = null;
+                toast.classList.remove('show');
+                const pending = this._pendingToast;
+                this._pendingToast = null;
+                if (pending) {
+                    toast.remove();
+                    this._renderToast(pending);
+                } else {
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, type === 'error' ? 2000 : 3000);
         });
-
-        // Auto-remove (longer for errors)
-        const duration = type === 'error' ? 5000 : 3000;
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }, duration);
     }
 }
 

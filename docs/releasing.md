@@ -46,7 +46,7 @@ GitHub 项目仓库和问题反馈也指向 `jintianzhouyine/my-translator`。
 
 ## 构建范围
 
-- macOS：`macos-14` / `aarch64-apple-darwin`。
+- macOS：`macos-15`（Apple Silicon）/ `aarch64-apple-darwin`。
 - Windows：`windows-2022` / `x86_64-pc-windows-msvc`。
 - Windows x64 先执行 `scripts/prepare-windows-x64.ps1`，准备官方 sherpa-onnx static-MD 库，与 Rust 默认动态 CRT 匹配。
 - 语音库准备会分别打印下载、校验和解压进度；下载具有连接、低速及总时限，最多尝试三次。
@@ -55,3 +55,5 @@ GitHub 项目仓库和问题反馈也指向 `jintianzhouyine/my-translator`。
 - 校验后的库会单独缓存，后续运行可以复用；缓存服务失败不阻止正常下载准备。
 - 旧 Windows ARM64 安装包保留在历史 Release 中。
 - 测试和二进制检查不能替代真实设备上的安装、云端翻译与音频路由验收。
+
+GitHub Actions 的 macOS 14 镜像已于 2026 年 11 月 2 日退役，会报 `macos-14-arm64-us-default is not supported` 等配置错误。本工作流使用仍受支持的 `macos-15`；修改后需要从更新后的 `main` 新建手动运行，重跑旧任务仍会使用旧工作流。参见 [GitHub 退役公告](https://github.com/actions/runner-images/issues/13518) 和 [当前托管运行器列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。

@@ -24,6 +24,7 @@
 
 | 文档 | 中文 | English |
 | --- | --- | --- |
+| v0.10.9 | [中文](releases/v0.10.9.md) | [English](releases/v0.10.9.en.md) |
 | v0.10.8 | [中文](releases/v0.10.8.md) | [English](releases/v0.10.8.en.md) |
 | v0.10.7 | [中文](releases/v0.10.7.md) | [English](releases/v0.10.7.en.md) |
 | v0.10.6 | [中文](releases/v0.10.6.md) | [English](releases/v0.10.6.en.md) |

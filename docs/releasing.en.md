@@ -37,7 +37,7 @@ Releases provide the installers and checksum file above. They do not include Tau
 
 ## Build details
 
-- macOS: `macos-14` / `aarch64-apple-darwin`.
+- macOS: `macos-15` (Apple Silicon) / `aarch64-apple-darwin`.
 - Windows: `windows-2022` / `x86_64-pc-windows-msvc`.
 - Windows x64 first runs `scripts/prepare-windows-x64.ps1` to prepare the official sherpa-onnx static-MD libraries, matching Rust's default dynamic CRT.
 - Speech-library preparation reports download, checksum and extraction progress. Downloads have connection, low-speed and total time limits, with up to three attempts.
@@ -46,3 +46,5 @@ Releases provide the installers and checksum file above. They do not include Tau
 - Verified libraries have a separate cache for later runs. A cache-service failure does not prevent normal download and preparation.
 - Older Windows ARM64 installers remain in historical Releases.
 - Tests and binary checks do not replace installation, cloud translation and audio-routing acceptance tests on real devices.
+
+GitHub Actions retired all macOS 14 images on November 2, 2026, causing configuration errors such as `macos-14-arm64-us-default is not supported`. This workflow uses the supported `macos-15` image. Start a new manual run from the updated `main`; rerunning an old job still uses its old workflow. See the [GitHub retirement announcement](https://github.com/actions/runner-images/issues/13518) and [current hosted runner list](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).

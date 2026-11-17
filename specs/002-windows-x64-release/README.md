@@ -48,6 +48,8 @@ transitions:
 实际 Windows x64 / macOS 安装包构建和设备运行验证留待用户触发 CI 后完成。
 本 spec 的完成范围是发布配置与交付准备，不代表新安装包已构建或通过设备验收。
 
+v0.10.9 修复 macOS 14 镜像退役导致的配置错误：runner 更新为 macos-15，仍构建 aarch64-apple-darwin；Windows 仍为 windows-2022 / x86_64-pc-windows-msvc。应从更新后的 main 新建手动运行，不能通过重跑旧任务取得工作流更新。参见 [发布说明](../../docs/releases/v0.10.9.md)。
+
 本地验证：221 项 JavaScript 测试通过，其中包含 12 项发布架构与版本回归测试；6 处版本号一致为 0.10.1；工作流 YAML、仅手动触发和构建矩阵检查通过。
 
 交付验证：actionlint 1.7.12 与 10 个 shell 片段语法检查通过。v0.10.1 tag 指向 cf41355，GitHub Release 已创建为草稿，附件为空，未触发新构建。Git 网络超时后使用已有 Git 凭据通过 API 同步，blob/tree/commit 哈希与本地一致。安装包由用户手动运行工作流生成。

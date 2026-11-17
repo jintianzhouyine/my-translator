@@ -65,7 +65,8 @@ jobs:
       matrix:
         include:
           - name: macOS Apple Silicon
-            runner: macos-14
+            # macOS 14 runners retired on 2026-11-02; macos-15 uses Apple Silicon.
+            runner: macos-15
             target: aarch64-apple-darwin
             bundle: dmg
             extension: .dmg
