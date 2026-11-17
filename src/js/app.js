@@ -2734,6 +2734,7 @@ class App {
             await invoke('start_capture', {
                 source: this.currentSource,
                 channel: new window.__TAURI__.core.Channel(), // dummy channel for permission check
+                onError: new Channel(), // required IPC channel; this probe stops capture immediately
             });
             await invoke('stop_capture');
         } catch (err) {

@@ -44,8 +44,14 @@ function fixture({ diagnostics = false } = {}) {
             starts.push(start);
             return start.id;
         }
-        if (command === 'start_capture') { captures.push(args.channel); captureErrors.push(args.onError); await nativeStart(); captureRunning = true; }
+        if (command === 'start_capture') {
+            assert.ok(args.channel instanceof Channel, 'start_capture requires an audio channel');
+            assert.ok(args.onError instanceof Channel, 'start_capture requires an error channel');
+            captures.push(args.channel); captureErrors.push(args.onError);
+            await nativeStart(); captureRunning = true;
+        }
         if (command === 'stop_capture') captureRunning = false;
+        if (command === 'check_mlx_setup') return JSON.stringify({ ready: true });
     }
     class OpenAiRealtimeClient extends RealOpenAiRealtimeClient {
         constructor() {
@@ -88,7 +94,7 @@ function fixture({ diagnostics = false } = {}) {
         engine: app.translationMode, source: app.currentSource, generation: app._startGeneration,
     }) });
     app.transcriptUI = { setProvisional() {}, setSourceProvisional() {}, addOriginal() {}, addTranslation() {},
-        clearSourceProvisional() {}, clearProvisional() {} };
+        clearSourceProvisional() {}, clearProvisional() {}, removeStatusMessage() {} };
     async function tick(ms) {
         now += ms;
         for (const [id, timer] of [...timers]) {
@@ -220,6 +226,22 @@ test('native capture failure clears the running state and stale errors cannot st
     f.captureErrors[0].onmessage('late device error');
     assert.equal(f.app.isRunning, true);
     assert.equal(f.captureRunning(), true);
+    await f.app.pause();
+});
+
+test('local mode supplies both IPC channels for its permission probe and live capture', async () => {
+    const f = fixture();
+    f.app.translationMode = 'local';
+    await f.app._startLocalMode(f.settings);
+    assert.deepEqual(f.commands, [
+        'start_capture', 'stop_capture', 'check_mlx_setup', 'start_local_pipeline', 'start_capture',
+    ]);
+    assert.equal(f.captures.length, 2);
+    assert.equal(f.captureErrors.length, 2);
+    assert.notEqual(f.captureErrors[0], f.captureErrors[1]);
+    assert.equal(f.app.isRunning, true);
+    assert.equal(f.captureRunning(), true);
+    assert.ok(f.toasts.every(toast => toast.kind !== 'error'));
     await f.app.pause();
 });
 

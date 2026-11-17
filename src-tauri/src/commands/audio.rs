@@ -38,7 +38,7 @@ pub struct PermissionStatus {
 pub async fn start_capture(
     source: String,
     channel: Channel<Vec<u8>>,
-    on_error: Option<Channel<String>>,
+    on_error: Channel<String>,
     app: AppHandle,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -53,7 +53,7 @@ pub async fn start_capture(
 fn start_capture_blocking(
     source: String,
     channel: Channel<Vec<u8>>,
-    on_error: Option<Channel<String>>,
+    on_error: Channel<String>,
     state: &AudioState,
     routed: &RoutedAudioState,
 ) -> Result<(), String> {
@@ -124,9 +124,7 @@ fn start_capture_blocking(
             |pcm| channel.send(pcm).map_err(|_| ()),
             |message| {
                 crate::diagnostics::record_native_event("app", "session_failed", Some("capture"));
-                if let Some(on_error) = &on_error {
-                    let _ = on_error.send(message);
-                }
+                let _ = on_error.send(message);
             },
         );
     });
