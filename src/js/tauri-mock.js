@@ -38,6 +38,13 @@ if (!window.__TAURI__ && location.port === '3111') {
         desktop_subtitle_enabled: false,
         desktop_subtitle_content: 'both',
         desktop_subtitle_speaker: 'self',
+        desktop_subtitle_opacity: 1,
+        desktop_subtitle_font_family: 'system',
+        desktop_subtitle_font_size: 32,
+        desktop_subtitle_font_color: '#fff4a8',
+        desktop_subtitle_font_bold: true,
+        desktop_subtitle_font_italic: false,
+        desktop_subtitle_locked: false,
     };
 
     const subtitleKey = 'translator-desktop-subtitle-preview';
@@ -97,6 +104,9 @@ if (!window.__TAURI__ && location.port === '3111') {
                     }
                     case 'get_desktop_subtitle':
                         return JSON.parse(localStorage.getItem(subtitleKey) || 'null') || subtitleSnapshot;
+                    case 'lock_desktop_subtitle':
+                        subtitleChannel.postMessage({ event: 'desktop-subtitle-lock-requested', payload: null });
+                        return null;
                     case 'close_desktop_subtitle':
                         subtitleSnapshot.enabled = false;
                         localStorage.setItem(subtitleKey, JSON.stringify(subtitleSnapshot));

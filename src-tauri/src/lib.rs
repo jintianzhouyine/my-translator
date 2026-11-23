@@ -134,6 +134,7 @@ pub fn run() {
             commands::desktop_subtitle::set_desktop_subtitle,
             commands::desktop_subtitle::get_desktop_subtitle,
             commands::desktop_subtitle::close_desktop_subtitle,
+            commands::desktop_subtitle::lock_desktop_subtitle,
             commands::audio::start_capture,
             commands::audio::stop_capture,
             commands::audio::check_permissions,

@@ -1,3 +1,7 @@
+import { readDesktopSubtitleAppearance } from './desktop-subtitle-appearance.js';
+
+export { readDesktopSubtitleAppearance } from './desktop-subtitle-appearance.js';
+
 const CONTENT_MODES = new Set(['both', 'original', 'translation']);
 const SPEAKERS = new Set(['self', 'peer', 'both']);
 
@@ -46,6 +50,8 @@ export function desktopSubtitlePayload(settings = {}, snapshot = {}) {
     const speaker = candidate ? speakerOf(candidate, audioSource) : null;
     return {
         enabled,
+        locked: settings.desktop_subtitle_locked === true,
+        appearance: readDesktopSubtitleAppearance(settings),
         original: enabled && content !== 'translation' ? text(candidate?.original) : '',
         translation: enabled && content !== 'original' ? text(candidate?.translation) : '',
         speaker: enabled && candidate ? speaker === 'self' ? '我' : speaker === 'peer' ? '对方' : '混合音频' : '',

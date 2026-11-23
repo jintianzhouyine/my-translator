@@ -79,6 +79,13 @@ pub struct Settings {
     pub desktop_subtitle_content: String,
     /// "self" | "peer" | "both"
     pub desktop_subtitle_speaker: String,
+    pub desktop_subtitle_opacity: f64,
+    pub desktop_subtitle_font_family: String,
+    pub desktop_subtitle_font_size: u32,
+    pub desktop_subtitle_font_color: String,
+    pub desktop_subtitle_font_bold: bool,
+    pub desktop_subtitle_font_italic: bool,
+    pub desktop_subtitle_locked: bool,
     /// Translation mode: "soniox" | "local" | "openai" | "qwen"
     pub translation_mode: String,
     pub engine_selection_completed: bool,
@@ -177,6 +184,13 @@ impl Default for Settings {
             desktop_subtitle_enabled: false,
             desktop_subtitle_content: "both".to_string(),
             desktop_subtitle_speaker: "self".to_string(),
+            desktop_subtitle_opacity: 1.0,
+            desktop_subtitle_font_family: "system".to_string(),
+            desktop_subtitle_font_size: 32,
+            desktop_subtitle_font_color: "#fff4a8".to_string(),
+            desktop_subtitle_font_bold: true,
+            desktop_subtitle_font_italic: false,
+            desktop_subtitle_locked: false,
             translation_mode: "soniox".to_string(),
             engine_selection_completed: false,
             custom_context: None,
@@ -283,6 +297,13 @@ mod tests {
         assert!(!settings.desktop_subtitle_enabled);
         assert_eq!(settings.desktop_subtitle_content, "both");
         assert_eq!(settings.desktop_subtitle_speaker, "self");
+        assert_eq!(settings.desktop_subtitle_opacity, 1.0);
+        assert_eq!(settings.desktop_subtitle_font_family, "system");
+        assert_eq!(settings.desktop_subtitle_font_size, 32);
+        assert_eq!(settings.desktop_subtitle_font_color, "#fff4a8");
+        assert!(settings.desktop_subtitle_font_bold);
+        assert!(!settings.desktop_subtitle_font_italic);
+        assert!(!settings.desktop_subtitle_locked);
     }
 
     #[test]
@@ -305,6 +326,13 @@ mod tests {
             "desktop_subtitle_enabled": true,
             "desktop_subtitle_content": "original",
             "desktop_subtitle_speaker": "peer",
+            "desktop_subtitle_opacity": 0.5,
+            "desktop_subtitle_font_family": "mono",
+            "desktop_subtitle_font_size": 24,
+            "desktop_subtitle_font_color": "#ffffff",
+            "desktop_subtitle_font_bold": false,
+            "desktop_subtitle_font_italic": true,
+            "desktop_subtitle_locked": true,
             "qwen_glossary_outbound": {"产品名": "ProductName"},
             "qwen_glossary_inbound": {"ProductName": "产品名"},
             "translation_type": "two_way",

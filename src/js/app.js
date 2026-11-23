@@ -8,6 +8,7 @@ import { hasRememberedEngine } from './engine-startup.js';
 import { DiagnosticLogger } from './diagnostics.js';
 import { TranscriptUI } from './ui.js';
 import { DesktopSubtitles } from './desktop-subtitles.js';
+import { readDesktopSubtitleAppearance } from './desktop-subtitle-appearance.js';
 import { sonioxClient } from './soniox.js';
 import { elevenLabsTTS } from './elevenlabs-tts.js';
 import { googleTTS } from './google-tts.js';
@@ -309,21 +310,7 @@ class App {
         document.getElementById('check-show-original')?.addEventListener('change', (event) => {
             void this._setShowOriginal(event.target.checked);
         });
-        document.getElementById('btn-desktop-subtitle')?.addEventListener('click', () => {
-            void this._setDesktopSubtitleSettings({
-                desktop_subtitle_enabled: settingsManager.get().desktop_subtitle_enabled !== true,
-            });
-        });
-        for (const [id, key] of [
-            ['check-desktop-subtitle', 'desktop_subtitle_enabled'],
-            ['select-desktop-subtitle-content', 'desktop_subtitle_content'],
-            ['select-desktop-subtitle-speaker', 'desktop_subtitle_speaker'],
-        ]) {
-            document.getElementById(id)?.addEventListener('change', event => {
-                void this._setDesktopSubtitleSettings({ [key]: event.target.type === 'checkbox'
-                    ? event.target.checked : event.target.value });
-            });
-        }
+        this._bindDesktopSubtitleControls();
 
         // Font size quick controls
         document.getElementById('btn-font-up').addEventListener('click', () => this._adjustFontSize(4));
@@ -3343,20 +3330,92 @@ class App {
         };
         await this.appWindow.listen?.('desktop-subtitle-closed', () => {
             // Drop queued streaming writes before waiting for an in-progress settings save.
-            this.desktopSubtitles.configure({ ...settingsManager.get(), desktop_subtitle_enabled: false });
+            this.desktopSubtitles.configure({ ...this._desktopSubtitleCurrentSettings(), desktop_subtitle_enabled: false });
             void this._setDesktopSubtitleSettings({ desktop_subtitle_enabled: false });
+        });
+        await this.appWindow.listen?.('desktop-subtitle-lock-requested', () => {
+            this.desktopSubtitles.configure({ ...this._desktopSubtitleCurrentSettings(), desktop_subtitle_locked: true });
+            void this._setDesktopSubtitleSettings({ desktop_subtitle_locked: true });
         });
     }
 
+    _bindDesktopSubtitleControls() {
+        for (const [id, key] of [['btn-desktop-subtitle', 'desktop_subtitle_enabled'],
+            ['btn-desktop-subtitle-lock', 'desktop_subtitle_locked']]) {
+            document.getElementById(id)?.addEventListener('click', () => {
+                void this._setDesktopSubtitleSettings({ [key]: this._desktopSubtitleCurrentSettings()[key] !== true });
+            });
+        }
+        for (const [id, key, checkbox] of [
+            ['check-desktop-subtitle', 'desktop_subtitle_enabled', true],
+            ['select-desktop-subtitle-content', 'desktop_subtitle_content', false],
+            ['select-desktop-subtitle-speaker', 'desktop_subtitle_speaker', false],
+            ['select-desktop-subtitle-font-family', 'desktop_subtitle_font_family', false],
+            ['check-desktop-subtitle-font-bold', 'desktop_subtitle_font_bold', true],
+            ['check-desktop-subtitle-font-italic', 'desktop_subtitle_font_italic', true],
+            ['check-desktop-subtitle-locked', 'desktop_subtitle_locked', true],
+        ]) {
+            document.getElementById(id)?.addEventListener('change', event => {
+                void this._setDesktopSubtitleSettings({ [key]: checkbox ? event.target.checked : event.target.value });
+            });
+        }
+        for (const [id, key, parse] of [
+            ['range-desktop-subtitle-opacity', 'desktop_subtitle_opacity', value => Number(value) / 100],
+            ['range-desktop-subtitle-font-size', 'desktop_subtitle_font_size', Number],
+            ['input-desktop-subtitle-font-color', 'desktop_subtitle_font_color', String],
+        ]) {
+            const control = document.getElementById(id);
+            control?.addEventListener('input', event => this._previewDesktopSubtitleSettings({ [key]: parse(event.target.value) }));
+            control?.addEventListener('change', event => { void this._setDesktopSubtitleSettings({ [key]: parse(event.target.value) }); });
+        }
+    }
+
+    _desktopSubtitleCurrentSettings(settings = settingsManager.get()) {
+        return { ...settings, ...this._activeDesktopSubtitlePatch,
+            ...this._pendingDesktopSubtitlePatch, ...this._desktopSubtitlePreview };
+    }
+
+    _previewDesktopSubtitleSettings(patch) {
+        this._desktopSubtitlePreview = { ...this._desktopSubtitlePreview, ...patch };
+        this._applyDesktopSubtitleDisplay(settingsManager.get());
+    }
+
     _applyDesktopSubtitleDisplay(settings) {
-        settings = { ...settings, ...this._pendingDesktopSubtitlePatch };
+        settings = this._desktopSubtitleCurrentSettings(settings);
         this.desktopSubtitles?.configure(settings);
+        const appearance = readDesktopSubtitleAppearance(settings);
         const checkbox = document.getElementById('check-desktop-subtitle');
         if (checkbox) checkbox.checked = settings.desktop_subtitle_enabled === true;
         const content = document.getElementById('select-desktop-subtitle-content');
         if (content) content.value = settings.desktop_subtitle_content || 'both';
         const speaker = document.getElementById('select-desktop-subtitle-speaker');
         if (speaker) speaker.value = settings.desktop_subtitle_speaker || 'self';
+        for (const [id, value] of [
+            ['range-desktop-subtitle-opacity', String(Math.round(appearance.opacity * 100))],
+            ['select-desktop-subtitle-font-family', appearance.fontFamily],
+            ['range-desktop-subtitle-font-size', String(appearance.fontSize)],
+            ['input-desktop-subtitle-font-color', appearance.color],
+        ]) {
+            const control = document.getElementById(id);
+            if (control) control.value = value;
+        }
+        for (const [id, value] of [['desktop-subtitle-opacity-value', `${Math.round(appearance.opacity * 100)}%`],
+            ['desktop-subtitle-font-size-value', `${appearance.fontSize}px`]]) {
+            const output = document.getElementById(id);
+            if (output) output.textContent = value;
+        }
+        for (const [id, value] of [['check-desktop-subtitle-font-bold', appearance.bold],
+            ['check-desktop-subtitle-font-italic', appearance.italic],
+            ['check-desktop-subtitle-locked', settings.desktop_subtitle_locked === true]]) {
+            const control = document.getElementById(id);
+            if (control) control.checked = value;
+        }
+        const lock = document.getElementById('btn-desktop-subtitle-lock');
+        if (lock) {
+            lock.textContent = settings.desktop_subtitle_locked === true
+                ? '解锁桌面字幕' : '锁定桌面字幕（鼠标穿透）';
+            lock.setAttribute('aria-pressed', String(settings.desktop_subtitle_locked === true));
+        }
         const button = document.getElementById('btn-desktop-subtitle');
         if (button) {
             button.textContent = settings.desktop_subtitle_enabled === true ? '✓ 桌面字幕' : '桌面字幕';
@@ -3365,19 +3424,28 @@ class App {
     }
 
     async _setDesktopSubtitleSettings(patch) {
+        for (const [key, value] of Object.entries(patch)) {
+            if (this._desktopSubtitlePreview?.[key] === value) delete this._desktopSubtitlePreview[key];
+        }
         if (this._savingDesktopSubtitle) {
             this._pendingDesktopSubtitlePatch = { ...this._pendingDesktopSubtitlePatch, ...patch };
             return;
         }
         this._savingDesktopSubtitle = true;
+        this._activeDesktopSubtitlePatch = { ...patch };
         const controls = ['check-desktop-subtitle', 'select-desktop-subtitle-content',
-            'select-desktop-subtitle-speaker', 'btn-desktop-subtitle']
+            'select-desktop-subtitle-speaker', 'btn-desktop-subtitle', 'btn-desktop-subtitle-lock',
+            'range-desktop-subtitle-opacity', 'select-desktop-subtitle-font-family',
+            'range-desktop-subtitle-font-size', 'input-desktop-subtitle-font-color',
+            'check-desktop-subtitle-font-bold', 'check-desktop-subtitle-font-italic', 'check-desktop-subtitle-locked']
             .map(id => document.getElementById(id)).filter(Boolean);
         controls.forEach(control => { control.disabled = true; });
         try {
             await settingsManager.save(patch);
+            this._activeDesktopSubtitlePatch = null;
             this._applyDesktopSubtitleDisplay(settingsManager.get());
         } catch (error) {
+            this._activeDesktopSubtitlePatch = null;
             this._applyDesktopSubtitleDisplay(settingsManager.get());
             this._showToast(`桌面字幕设置保存失败：${error.message || error}`, 'error');
         } finally {

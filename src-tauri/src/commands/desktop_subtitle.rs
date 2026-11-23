@@ -5,12 +5,61 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder
 const WINDOW_LABEL: &str = "desktop-subtitle";
 
 /// Only the selected visible text crosses into the subtitle webview.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+#[serde(default)]
 pub struct DesktopSubtitlePayload {
     pub enabled: bool,
     pub original: String,
     pub translation: String,
     pub speaker: String,
+    pub locked: bool,
+    pub appearance: DesktopSubtitleAppearance,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DesktopSubtitleAppearance {
+    pub opacity: f64,
+    pub font_family: String,
+    pub font_size: u32,
+    pub color: String,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+impl Default for DesktopSubtitleAppearance {
+    fn default() -> Self {
+        Self {
+            opacity: 1.0,
+            font_family: "system".to_string(),
+            font_size: 32,
+            color: "#fff4a8".to_string(),
+            bold: true,
+            italic: false,
+        }
+    }
+}
+
+impl DesktopSubtitleAppearance {
+    fn normalized(mut self) -> Self {
+        self.opacity = if self.opacity.is_finite() {
+            self.opacity.clamp(0.2, 1.0)
+        } else {
+            1.0
+        };
+        self.font_size = self.font_size.clamp(16, 64);
+        if !matches!(
+            self.font_family.as_str(),
+            "system" | "sans" | "serif" | "mono"
+        ) {
+            self.font_family = "system".to_string();
+        }
+        let color = self.color.as_bytes();
+        if color.len() != 7 || color[0] != b'#' || !color[1..].iter().all(u8::is_ascii_hexdigit) {
+            self.color = "#fff4a8".to_string();
+        }
+        self
+    }
 }
 
 #[derive(Default)]
@@ -37,6 +86,10 @@ pub async fn set_desktop_subtitle(
     payload: DesktopSubtitlePayload,
 ) -> Result<(), String> {
     let _update = state.1.lock().await;
+    let payload = DesktopSubtitlePayload {
+        appearance: payload.appearance.normalized(),
+        ..payload
+    };
     *state.0.lock().map_err(|error| error.to_string())? = payload.clone();
 
     if !payload.enabled {
@@ -97,6 +150,12 @@ pub async fn set_desktop_subtitle(
             window
         }
     };
+    window
+        .set_resizable(!payload.locked)
+        .map_err(|error| error.to_string())?;
+    window
+        .set_ignore_cursor_events(payload.locked)
+        .map_err(|error| error.to_string())?;
     app.emit_to(WINDOW_LABEL, "desktop-subtitle-update", &payload)
         .map_err(|error| error.to_string())?;
     if !window.is_visible().map_err(|error| error.to_string())? {
@@ -118,9 +177,16 @@ pub fn close_desktop_subtitle(app: AppHandle) -> Result<(), String> {
     hide_and_notify(&app)
 }
 
+/// Let the main window serialize this change after any in-flight text update.
+#[tauri::command]
+pub fn lock_desktop_subtitle(app: AppHandle) -> Result<(), String> {
+    app.emit_to("main", "desktop-subtitle-lock-requested", ())
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::DesktopSubtitlePayload;
+    use super::{DesktopSubtitleAppearance, DesktopSubtitlePayload};
 
     #[test]
     fn subtitle_snapshot_preserves_unicode_and_enabled_state() {
@@ -131,7 +197,46 @@ mod tests {
             "speaker": "我"
         });
         let payload: DesktopSubtitlePayload = serde_json::from_value(value.clone()).unwrap();
-        assert_eq!(serde_json::to_value(payload).unwrap(), value);
+        let saved = serde_json::to_value(payload).unwrap();
+        for (key, expected) in value.as_object().unwrap() {
+            assert_eq!(&saved[key], expected);
+        }
+        assert_eq!(saved["locked"], false);
+        assert_eq!(saved["appearance"]["fontSize"], 32);
+        assert_eq!(saved["appearance"]["fontFamily"], "system");
+        assert_eq!(saved["appearance"]["bold"], true);
         assert!(!DesktopSubtitlePayload::default().enabled);
+    }
+
+    #[test]
+    fn partial_appearance_keeps_defaults_and_normalizes_unsafe_values() {
+        let payload: DesktopSubtitlePayload = serde_json::from_value(serde_json::json!({
+            "locked": true,
+            "appearance": {"opacity": 0.01, "fontSize": 200, "fontFamily": "unknown", "color": "url(x)"}
+        })).unwrap();
+        assert!(payload.locked);
+        let appearance = payload.appearance.normalized();
+        assert_eq!(appearance.opacity, 0.2);
+        assert_eq!(appearance.font_size, 64);
+        assert_eq!(appearance.font_family, "system");
+        assert_eq!(appearance.color, "#fff4a8");
+        assert!(appearance.bold);
+        assert!(!appearance.italic);
+        let invalid_opacity = DesktopSubtitleAppearance {
+            opacity: f64::NAN,
+            ..DesktopSubtitleAppearance::default()
+        };
+        assert_eq!(invalid_opacity.normalized().opacity, 1.0);
+    }
+
+    #[test]
+    fn configured_appearance_and_lock_survive_snapshot_roundtrip() {
+        let value = serde_json::json!({
+            "enabled": true, "original": "测试", "translation": "Test", "speaker": "我", "locked": true,
+            "appearance": {"opacity": 0.6, "fontFamily": "serif", "fontSize": 48, "color": "#Aa88ff", "bold": false, "italic": true}
+        });
+        let payload: DesktopSubtitlePayload = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(payload.appearance.clone().normalized(), payload.appearance);
+        assert_eq!(serde_json::to_value(payload).unwrap(), value);
     }
 }

@@ -10,9 +10,10 @@
 </head>
 <body>
   <main id="desktop-subtitle" aria-label="桌面字幕">
-    <div class="subtitle-controls">
+    <div id="subtitle-controls" class="subtitle-controls">
       <span id="subtitle-speaker"></span>
       <span id="subtitle-hint">按住字幕拖动 · 拖动边缘调整大小</span>
+      <button id="subtitle-lock" type="button" title="锁定字幕并让鼠标穿透；在主窗口解除锁定" aria-label="锁定字幕并让鼠标穿透">锁定</button>
       <button id="subtitle-close" type="button" title="关闭桌面字幕" aria-label="关闭桌面字幕">×</button>
     </div>
     <div id="subtitle-lines" class="subtitle-lines" role="status" aria-live="polite" aria-atomic="true">

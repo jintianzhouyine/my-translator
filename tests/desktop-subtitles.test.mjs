@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DesktopSubtitles, desktopSubtitlePayload } from '../src/js/desktop-subtitles.js';
 import { initDesktopSubtitleWindow, renderDesktopSubtitle } from '../src/js/desktop-subtitle-window.js';
+import {
+    readDesktopSubtitleAppearance, normalizeDesktopSubtitleAppearance, desktopSubtitleTextLayout,
+} from '../src/js/desktop-subtitle-appearance.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
@@ -10,15 +13,17 @@ const deferred = () => {
     return { resolve, reject, promise };
 };
 const enabled = { desktop_subtitle_enabled: true };
+const defaultAppearance = { opacity: 1, fontFamily: 'system', fontSize: 32, color: '#fff4a8', bold: true, italic: false };
+const payloadDefaults = { locked: false, appearance: defaultAppearance };
 const self = { id: 'self', original: '我说的话', translation: 'What I said', direction: 'outbound', status: 'translated' };
 const peer = { id: 'peer', original: 'Your words', translation: '对方的话', direction: 'inbound', status: 'translated' };
 
 test('desktop subtitles default off and independently select original, translation or both', () => {
     assert.deepEqual(desktopSubtitlePayload({}, { segments: [self] }), {
-        enabled: false, original: '', translation: '', speaker: '',
+        ...payloadDefaults, enabled: false, original: '', translation: '', speaker: '',
     });
     assert.deepEqual(desktopSubtitlePayload(enabled, { segments: [self] }), {
-        enabled: true, original: self.original, translation: self.translation, speaker: '我',
+        ...payloadDefaults, enabled: true, original: self.original, translation: self.translation, speaker: '我',
     });
     assert.equal(desktopSubtitlePayload({ ...enabled, desktop_subtitle_content: 'original' }, { segments: [self] }).translation, '');
     assert.equal(desktopSubtitlePayload({ ...enabled, desktop_subtitle_content: 'translation' }, { segments: [self] }).original, '');
@@ -64,7 +69,7 @@ test('live provisional text keeps source and target roles and clearing it restor
     const snapshot = { audioSource: 'microphone', segments: [{ original: 'old', translation: '旧句子' }],
         provider: 'openai', provisionalText: 'new translation', sourceProvisionalText: 'new source' };
     assert.deepEqual(desktopSubtitlePayload(enabled, snapshot), {
-        enabled: true, original: 'new source', translation: 'new translation', speaker: '我',
+        ...payloadDefaults, enabled: true, original: 'new source', translation: 'new translation', speaker: '我',
     });
     assert.equal(desktopSubtitlePayload(enabled, { ...snapshot, provider: 'soniox' }).original, 'new translation');
     assert.equal(desktopSubtitlePayload(enabled, { ...snapshot, provider: 'soniox' }).translation, '');
@@ -125,7 +130,62 @@ test('controller copies transcript state and clear removes old subtitles before 
     await controller.configure({ ...enabled, desktop_subtitle_content: 'original' });
     assert.equal(writes.at(-1).original, self.original);
     await controller.clear();
-    assert.deepEqual(writes.at(-1), { enabled: true, original: '', translation: '', speaker: '' });
+    assert.deepEqual(writes.at(-1), { ...payloadDefaults, enabled: true, original: '', translation: '', speaker: '' });
+});
+
+test('appearance defaults and malformed values are safe and independent from main transcript settings', () => {
+    assert.deepEqual(readDesktopSubtitleAppearance(), defaultAppearance);
+    assert.deepEqual(readDesktopSubtitleAppearance({ overlay_opacity: 0.2, font_size: 140 }), defaultAppearance);
+    assert.deepEqual(readDesktopSubtitleAppearance({
+        desktop_subtitle_opacity: -4,
+        desktop_subtitle_font_family: 'serif; background:url(https://example.com)',
+        desktop_subtitle_font_size: Infinity,
+        desktop_subtitle_font_color: 'red; opacity:0',
+        desktop_subtitle_font_bold: false,
+        desktop_subtitle_font_italic: true,
+    }), { ...defaultAppearance, opacity: 0.2, bold: false, italic: true });
+    assert.deepEqual(normalizeDesktopSubtitleAppearance({ opacity: 7, fontSize: 99, fontFamily: 'mono', color: '#Aa12Ff' }), {
+        ...defaultAppearance, opacity: 1, fontSize: 64, fontFamily: 'mono', color: '#aa12ff',
+    });
+    assert.equal(normalizeDesktopSubtitleAppearance({ fontSize: -7, fontFamily: '__proto__' }).fontSize, 16);
+    assert.equal(normalizeDesktopSubtitleAppearance({ fontFamily: '__proto__' }).fontFamily, 'system');
+    assert.deepEqual(normalizeDesktopSubtitleAppearance(null), defaultAppearance);
+});
+
+test('font changes and locking update retained text immediately and survive clear', async () => {
+    const writes = [];
+    const controller = new DesktopSubtitles({ invoke: async (_, { payload }) => { writes.push(payload); } });
+    await controller.configure(enabled);
+    await controller.update({ segments: [self] });
+    const settings = { ...enabled, desktop_subtitle_locked: true, desktop_subtitle_opacity: 0.35,
+        desktop_subtitle_font_family: 'serif', desktop_subtitle_font_size: 48,
+        desktop_subtitle_font_color: '#00aaff', desktop_subtitle_font_bold: false, desktop_subtitle_font_italic: true };
+    await controller.configure(settings);
+    assert.equal(writes.at(-1).original, self.original);
+    assert.equal(writes.at(-1).locked, true);
+    assert.deepEqual(writes.at(-1).appearance, { opacity: 0.35, fontFamily: 'serif', fontSize: 48,
+        color: '#00aaff', bold: false, italic: true });
+    await controller.clear();
+    assert.equal(writes.at(-1).original, '');
+    assert.equal(writes.at(-1).locked, true);
+    assert.equal(writes.at(-1).appearance.fontSize, 48);
+});
+
+test('large font layout keeps complete source and translation lines within the available window height', () => {
+    for (const availableHeight of [40, 66, 80, 110, 136, 250]) {
+        for (const fontSize of [16, 32, 48, 64]) {
+            for (const bilingual of [false, true]) {
+                const layout = desktopSubtitleTextLayout({ fontSize, availableHeight, bilingual });
+                const actualHeight = layout.fontSize * 1.32 * layout.lines
+                    + (bilingual ? layout.sourceFontSize * 1.32 + layout.gap : 0);
+                assert.ok(actualHeight <= availableHeight + 0.001, `fit ${fontSize}px in ${availableHeight}px`);
+                assert.ok(layout.fontSize <= fontSize);
+                assert.ok(layout.lines === 1 || layout.lines === 2);
+            }
+        }
+    }
+    assert.equal(desktopSubtitleTextLayout({ fontSize: 64, availableHeight: 136 }).fontSize, 64);
+    assert.equal(desktopSubtitleTextLayout({ fontSize: 32, availableHeight: 136, bilingual: true }).fontSize, 32);
 });
 
 test('failed native writes report once, retry identical snapshots and recover for later changes', async () => {
@@ -154,6 +214,7 @@ function documentFixture() {
     const doc = { getElementById(id) {
         if (!elements.has(id)) elements.set(id, {
             textContent: '', hidden: false, classes: new Set(), events: {},
+            style: { setProperty(name, value) { this[name] = value; } },
             classList: { toggle(key, value) { const classes = elements.get(id).classes; if (value) classes.add(key); else classes.delete(key); } },
             addEventListener(event, callback) { this.events[event] = callback; },
             set innerHTML(_) { throw new Error('Recognition text must not become HTML'); },
@@ -175,6 +236,29 @@ test('native overlay renders speech as text and toggles the requested lines', ()
     assert.equal(f.element('subtitle-lines').classes.has('bilingual'), false);
     renderDesktopSubtitle(f.doc, {});
     assert.equal(f.element('subtitle-empty').hidden, false);
+});
+
+test('native overlay safely applies font, opacity and lock state without dimming its controls', () => {
+    const f = documentFixture();
+    renderDesktopSubtitle(f.doc, { original: '原文', translation: 'Translation', locked: true,
+        appearance: { opacity: 0.25, fontFamily: 'mono', fontSize: 64, color: '#12ab34', bold: false, italic: true } });
+    const style = f.element('subtitle-lines').style;
+    assert.equal(style.opacity, '0.25');
+    assert.equal(style['--subtitle-font-weight'], '400');
+    assert.equal(style['--subtitle-font-style'], 'italic');
+    assert.equal(style['--subtitle-font-color'], '#12ab34');
+    assert.match(style['--subtitle-font-family'], /Consolas/);
+    assert.ok(Number.parseFloat(style['--subtitle-font-size']) < 64, 'large bilingual text fits the small window');
+    assert.equal(f.element('subtitle-lines').classes.has('one-line'), true);
+    assert.equal(f.element('subtitle-controls').style.opacity, undefined);
+    assert.equal(f.element('subtitle-controls').hidden, true);
+    assert.equal(f.element('desktop-subtitle').classes.has('is-locked'), true);
+    renderDesktopSubtitle(f.doc, { translation: 'Unlocked', appearance: { fontFamily: 'url(unsafe)', color: 'red;' } });
+    assert.equal(f.element('subtitle-controls').hidden, false);
+    assert.equal(f.element('desktop-subtitle').classes.has('is-locked'), false);
+    assert.equal(style['--subtitle-font-color'], '#fff4a8');
+    assert.equal(f.element('subtitle-lines').classes.has('one-line'), false);
+    assert.doesNotMatch(style['--subtitle-font-family'], /url/);
 });
 
 test('native overlay subscribes before initial read and never replaces a newer push with stale cached text', async () => {
@@ -202,4 +286,44 @@ test('native overlay subscribes before initial read and never replaces a newer p
     f.element('desktop-subtitle').events.pointerdown({ button: 0, target: { closest: () => ({}) } });
     await tick();
     assert.equal(calls.filter(call => call === 'drag').length, 1);
+});
+
+test('a saved lock blocks dragging and controls; unlocked hover lock invokes native click-through', async () => {
+    const f = documentFixture(), calls = [];
+    let onUpdate;
+    const tauri = { core: { invoke: async command => {
+        calls.push(command);
+        if (command === 'get_desktop_subtitle') return { original: 'Saved locked subtitle', locked: true };
+        if (command === 'lock_desktop_subtitle') onUpdate({ payload: { original: 'Locked again', locked: true } });
+    } }, window: { getCurrentWindow: () => ({
+        listen: async (_, callback) => { onUpdate = callback; },
+        startDragging: async () => { calls.push('drag'); },
+    }) } };
+    await initDesktopSubtitleWindow({ doc: f.doc, tauri });
+    assert.equal(f.element('subtitle-controls').hidden, true);
+    f.element('desktop-subtitle').events.pointerdown({ button: 0, target: { closest: () => null } });
+    f.element('subtitle-close').events.click();
+    await f.element('subtitle-lock').events.click();
+    assert.deepEqual(calls, ['get_desktop_subtitle']);
+    onUpdate({ payload: { original: 'Unlocked', locked: false } });
+    assert.equal(f.element('subtitle-controls').hidden, false);
+    await f.element('subtitle-lock').events.click();
+    assert.equal(calls.at(-1), 'lock_desktop_subtitle');
+    assert.equal(f.element('subtitle-lock').disabled, true);
+    assert.equal(f.element('subtitle-controls').hidden, true);
+    f.element('desktop-subtitle').events.pointerdown({ button: 0, target: { closest: () => null } });
+    assert.equal(calls.includes('drag'), false);
+});
+
+test('a failed native lock keeps controls available for retry and reports the error', async () => {
+    const f = documentFixture();
+    const tauri = { core: { invoke: async command => {
+        if (command === 'get_desktop_subtitle') return {};
+        if (command === 'lock_desktop_subtitle') throw new Error('unsupported');
+    } }, window: { getCurrentWindow: () => ({ listen: async () => {}, startDragging: async () => {} }) } };
+    await initDesktopSubtitleWindow({ doc: f.doc, tauri });
+    await f.element('subtitle-lock').events.click();
+    assert.equal(f.element('subtitle-lock').disabled, false);
+    assert.equal(f.element('subtitle-controls').hidden, false);
+    assert.match(f.element('subtitle-hint').textContent, /unsupported/);
 });

@@ -10,6 +10,7 @@ import { QwenSettingsUI as RealQwenSettingsUI } from '../src/js/qwen-settings.js
 import { hasRememberedEngine } from '../src/js/engine-startup.js';
 import { DiagnosticLogger } from '../src/js/diagnostics.js';
 import { QwenAudioControls as RealQwenAudioControls, isQwenMixSetting } from '../src/js/qwen-audio-controls.js';
+import { readDesktopSubtitleAppearance } from '../src/js/desktop-subtitle-appearance.js';
 
 // Exercise the real controller without importing desktop-only dependencies or booting the app.
 const source = readFileSync(new URL('../src/js/app.js', import.meta.url), 'utf8');
@@ -36,6 +37,7 @@ class Element {
         this.children = [];
         this.open = false;
         this.modalOpens = 0;
+        this.listeners = new Map();
         const classes = new Set();
         this.classList = {
             contains: name => classes.has(name),
@@ -46,7 +48,13 @@ class Element {
     querySelector(selector) { return selector === 'option[value="two_way"]' ? this.twoWayOption : null; }
     querySelectorAll() { return this.children || []; }
     get options() { return this.children; }
-    addEventListener() {}
+    addEventListener(event, callback) {
+        if (!this.listeners.has(event)) this.listeners.set(event, []);
+        this.listeners.get(event).push(callback);
+    }
+    dispatch(event) {
+        for (const callback of this.listeners.get(event) || []) callback({ target: this, type: event });
+    }
     setAttribute(name, value) { this[name] = value; }
     append(...nodes) { this.children.push(...nodes); }
     replaceChildren(...nodes) { this.children = nodes; this.value = ''; }
@@ -63,6 +71,13 @@ const configured = {
     language_a: 'ja', language_b: 'vi',
 };
 
+const desktopAppearance = {
+    desktop_subtitle_enabled: true, desktop_subtitle_content: 'both', desktop_subtitle_speaker: 'self',
+    desktop_subtitle_opacity: 1, desktop_subtitle_font_family: 'system', desktop_subtitle_font_size: 32,
+    desktop_subtitle_font_color: '#fff4a8', desktop_subtitle_font_bold: true,
+    desktop_subtitle_font_italic: false, desktop_subtitle_locked: false,
+};
+
 function fixture(initialSettings = {}) {
     let saved = { ...configured, ...initialSettings };
     const pendingSaves = [];
@@ -75,7 +90,12 @@ function fixture(initialSettings = {}) {
     const desktopSnapshots = [];
     const elements = new Map();
     const element = id => {
-        if (!elements.has(id)) elements.set(id, new Element());
+        if (!elements.has(id)) {
+            const control = new Element();
+            control.type = id.startsWith('check-') ? 'checkbox' : id.startsWith('range-') ? 'range'
+                : id === 'input-desktop-subtitle-font-color' ? 'color' : '';
+            elements.set(id, control);
+        }
         return elements.get(id);
     };
     const pills = ['standard', 'qwen', 'openai'].map(engineClass => {
@@ -111,6 +131,7 @@ function fixture(initialSettings = {}) {
     };
     const App = vm.runInNewContext(appClass, {
         settingsManager, document, QWEN_LANGS, validateQwenCall, languageName, hasRememberedEngine, isQwenMixSetting, DiagnosticLogger,
+        readDesktopSubtitleAppearance,
         window: { __TAURI__: { core: {} } },
         TranscriptUI: class {
             configure() {}
@@ -649,4 +670,168 @@ test('desktop subtitles receive independent transcript snapshots with the active
     assert.equal(received.segments[0].translation, 'Hello');
     f.app.transcriptUI.onChange({ ...snapshot, audioSource: 'system' });
     assert.equal(f.desktopSnapshots.at(-1).audioSource, 'system', 'recognition source metadata takes precedence over mutable controls');
+});
+
+test('desktop appearance and lock notifications preserve active audio and synchronize display controls', async () => {
+    const f = fixture(desktopAppearance);
+    await f.app._initDesktopSubtitles();
+    f.app._appliedSettings = f.saved();
+    f.app.isRunning = true;
+    f.app.ttsEnabled = true;
+    f.app.transcriptUI.configure = () => {};
+    f.app.pause = () => { throw new Error('appearance changes must not pause capture'); };
+    f.app._updateSourceButtons = () => { throw new Error('appearance changes must not reset audio routing'); };
+    f.app._updateTTSButton = () => { throw new Error('appearance changes must not reset narration'); };
+    const changed = {
+        desktop_subtitle_opacity: 0.45, desktop_subtitle_font_family: 'serif', desktop_subtitle_font_size: 48,
+        desktop_subtitle_font_color: '#aabbcc', desktop_subtitle_font_bold: false,
+        desktop_subtitle_font_italic: true, desktop_subtitle_locked: true,
+    };
+    f.app._applySettings({ ...f.saved(), ...changed });
+    assert.equal(f.app.isRunning, true);
+    assert.equal(f.app.ttsEnabled, true);
+    assert.equal(Number(f.element('range-desktop-subtitle-opacity').value), 45);
+    assert.equal(f.element('desktop-subtitle-opacity-value').textContent, '45%');
+    assert.equal(f.element('select-desktop-subtitle-font-family').value, 'serif');
+    assert.equal(Number(f.element('range-desktop-subtitle-font-size').value), 48);
+    assert.match(f.element('desktop-subtitle-font-size-value').textContent, /48/);
+    assert.equal(f.element('input-desktop-subtitle-font-color').value, '#aabbcc');
+    assert.equal(f.element('check-desktop-subtitle-font-bold').checked, false);
+    assert.equal(f.element('check-desktop-subtitle-font-italic').checked, true);
+    assert.equal(f.element('check-desktop-subtitle-locked').checked, true);
+    const unlock = f.element('btn-desktop-subtitle-lock');
+    assert.equal(unlock.disabled, false, 'locked overlay remains unlockable from the main window');
+    assert.match(unlock.textContent, /解锁/);
+    assert.equal(unlock['aria-pressed'], 'true');
+    for (const [key, value] of Object.entries(changed)) assert.equal(f.desktopConfigurations.at(-1)[key], value);
+});
+
+test('desktop appearance save failure restores style and lock controls to persisted values', async () => {
+    const f = fixture(desktopAppearance);
+    await f.app._initDesktopSubtitles();
+    const saving = f.app._setDesktopSubtitleSettings({ desktop_subtitle_opacity: 0.4,
+        desktop_subtitle_font_family: 'mono', desktop_subtitle_font_size: 56, desktop_subtitle_font_color: '#123456',
+        desktop_subtitle_font_bold: false, desktop_subtitle_font_italic: true, desktop_subtitle_locked: true });
+    f.pendingSaves[0].reject(new Error('disk full'));
+    await saving;
+    assert.equal(Number(f.element('range-desktop-subtitle-opacity').value), 100);
+    assert.equal(f.element('select-desktop-subtitle-font-family').value, 'system');
+    assert.equal(Number(f.element('range-desktop-subtitle-font-size').value), 32);
+    assert.equal(f.element('input-desktop-subtitle-font-color').value, '#fff4a8');
+    assert.equal(f.element('check-desktop-subtitle-font-bold').checked, true);
+    assert.equal(f.element('check-desktop-subtitle-font-italic').checked, false);
+    assert.equal(f.element('check-desktop-subtitle-locked').checked, false);
+    assert.equal(f.element('btn-desktop-subtitle-lock').disabled, false);
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_locked, false);
+    assert.match(f.toasts.at(-1).message, /保存失败.*disk full/);
+});
+
+test('native desktop lock event updates the overlay immediately and queues persistence after a style save', async () => {
+    const f = fixture(desktopAppearance);
+    await f.app._initDesktopSubtitles();
+    const lock = f.windowListeners.get('desktop-subtitle-lock-requested');
+    assert.equal(typeof lock, 'function');
+    const saving = f.app._setDesktopSubtitleSettings({ desktop_subtitle_font_size: 44 });
+    lock({ payload: null });
+    const lockConfiguration = f.desktopConfigurations.length - 1;
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_locked, true);
+    f.pendingSaves[0].resolve();
+    await nextTurn();
+    assert.equal(f.pendingSaves.length, 2);
+    assert.deepEqual(f.pendingSaves[1].patch, { desktop_subtitle_locked: true });
+    f.pendingSaves[1].resolve();
+    await saving;
+    assert.equal(f.saved().desktop_subtitle_locked, true);
+    assert.equal(f.saved().desktop_subtitle_font_size, 44);
+    assert.equal(f.element('check-desktop-subtitle-locked').checked, true);
+    assert.equal(f.element('btn-desktop-subtitle-lock').disabled, false);
+    assert.match(f.element('btn-desktop-subtitle-lock').textContent, /解锁/);
+    assert.ok(f.desktopConfigurations.slice(lockConfiguration).every(settings => settings.desktop_subtitle_locked),
+        'an earlier style save must never temporarily unlock the native window');
+});
+
+test('a rejected native lock preference save restores the unlocked overlay and main-window controls', async () => {
+    const f = fixture(desktopAppearance);
+    await f.app._initDesktopSubtitles();
+    f.windowListeners.get('desktop-subtitle-lock-requested')({ payload: null });
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_locked, true);
+    assert.deepEqual(f.pendingSaves[0].patch, { desktop_subtitle_locked: true });
+    f.pendingSaves[0].reject(new Error('disk full'));
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_locked, false);
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_locked, false);
+    assert.equal(f.element('check-desktop-subtitle-locked').checked, false);
+    assert.equal(f.element('btn-desktop-subtitle-lock').disabled, false);
+    assert.match(f.toasts.at(-1).message, /保存失败.*disk full/);
+});
+
+test('desktop sliders preview immediately and committing opacity preserves an uncommitted font-size preview', async () => {
+    const f = fixture(desktopAppearance);
+    await f.app._initDesktopSubtitles();
+    f.app._bindDesktopSubtitleControls();
+    f.app._applyDesktopSubtitleDisplay(f.saved());
+    const opacity = f.element('range-desktop-subtitle-opacity');
+    const fontSize = f.element('range-desktop-subtitle-font-size');
+    opacity.value = '55';
+    opacity.dispatch('input');
+    fontSize.value = '48';
+    fontSize.dispatch('input');
+    assert.equal(f.pendingSaves.length, 0, 'input previews must not create disk writes');
+    assert.equal(f.saved().desktop_subtitle_opacity, 1);
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_opacity, 0.55);
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_font_size, 48);
+    opacity.dispatch('change');
+    assert.deepEqual(f.pendingSaves[0].patch, { desktop_subtitle_opacity: 0.55 });
+    f.pendingSaves[0].resolve();
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_opacity, 0.55);
+    assert.equal(f.saved().desktop_subtitle_font_size, 32);
+    assert.equal(Number(fontSize.value), 48, 'saving another field must not reset an in-progress preview');
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_font_size, 48);
+    fontSize.dispatch('change');
+    assert.deepEqual(f.pendingSaves[1].patch, { desktop_subtitle_font_size: 48 });
+    f.pendingSaves[1].resolve();
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_font_size, 48);
+});
+
+test('desktop color preview rolls back after a rejected change save and permits a later retry', async () => {
+    const f = fixture(desktopAppearance);
+    await f.app._initDesktopSubtitles();
+    f.app._bindDesktopSubtitleControls();
+    f.app._applyDesktopSubtitleDisplay(f.saved());
+    const color = f.element('input-desktop-subtitle-font-color');
+    color.value = '#123456';
+    color.dispatch('input');
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_font_color, '#123456');
+    assert.equal(f.pendingSaves.length, 0);
+    color.dispatch('change');
+    f.pendingSaves[0].reject(new Error('disk full'));
+    await nextTurn();
+    assert.equal(color.value, '#fff4a8');
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_font_color, '#fff4a8');
+    assert.equal(color.disabled, false);
+    color.value = '#654321';
+    color.dispatch('change');
+    f.pendingSaves[1].resolve();
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_font_color, '#654321');
+});
+
+test('the main-window lock menu can unlock a click-through desktop subtitle window', async () => {
+    const f = fixture({ ...desktopAppearance, desktop_subtitle_locked: true });
+    await f.app._initDesktopSubtitles();
+    f.app._bindDesktopSubtitleControls();
+    f.app._applyDesktopSubtitleDisplay(f.saved());
+    const unlock = f.element('btn-desktop-subtitle-lock');
+    assert.equal(unlock.disabled, false);
+    assert.match(unlock.textContent, /解锁/);
+    unlock.dispatch('click');
+    assert.deepEqual(f.pendingSaves[0].patch, { desktop_subtitle_locked: false });
+    f.pendingSaves[0].resolve();
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_locked, false);
+    assert.equal(f.element('check-desktop-subtitle-locked').checked, false);
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_locked, false);
+    assert.equal(unlock.disabled, false);
 });

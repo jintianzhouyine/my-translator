@@ -1,6 +1,6 @@
 [package]
 name = "my-translator"
-version = "0.10.10"
+version = "0.10.11"
 description = "Personal Real-time Speech Translator"
 authors = ["phucnt"]
 edition = "2021"

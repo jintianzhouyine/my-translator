@@ -167,6 +167,7 @@
             <div class="more-menu-label">显示设置</div>
             <button id="btn-bilingual-subtitles" class="more-menu-item" type="button" aria-pressed="true">✓ 双语字幕（原文＋译文）</button>
             <button id="btn-desktop-subtitle" class="more-menu-item" type="button" aria-pressed="false">桌面字幕</button>
+            <button id="btn-desktop-subtitle-lock" class="more-menu-item" type="button" aria-pressed="false">锁定桌面字幕（鼠标穿透）</button>
             <div class="floating-controls">
               <div class="font-controls">
                 <button id="btn-font-down" class="float-btn" title="缩小字号">A−</button>
@@ -895,6 +896,42 @@
               <option value="both">双方的话</option>
             </select>
           </div>
+          <div class="slider-field">
+            <label class="field-label" for="range-desktop-subtitle-opacity">字幕不透明度</label>
+            <input type="range" id="range-desktop-subtitle-opacity" min="20" max="100" step="1" value="100" />
+            <output id="desktop-subtitle-opacity-value" class="range-value" for="range-desktop-subtitle-opacity">100%</output>
+          </div>
+          <div class="field">
+            <label class="field-label" for="select-desktop-subtitle-font-family">字幕字体</label>
+            <select id="select-desktop-subtitle-font-family">
+              <option value="system">系统默认</option>
+              <option value="sans">无衬线（黑体）</option>
+              <option value="serif">衬线（宋体）</option>
+              <option value="mono">等宽字体</option>
+            </select>
+          </div>
+          <div class="slider-field">
+            <label class="field-label" for="range-desktop-subtitle-font-size">字幕字号</label>
+            <input type="range" id="range-desktop-subtitle-font-size" min="16" max="64" step="1" value="32" />
+            <output id="desktop-subtitle-font-size-value" class="range-value" for="range-desktop-subtitle-font-size">32px</output>
+          </div>
+          <div class="field">
+            <label class="field-label" for="input-desktop-subtitle-font-color">字幕颜色</label>
+            <input type="color" id="input-desktop-subtitle-font-color" value="#fff4a8" />
+          </div>
+          <label class="checkbox-option">
+            <input type="checkbox" id="check-desktop-subtitle-font-bold" checked />
+            <span class="checkbox-label">粗体</span>
+          </label>
+          <label class="checkbox-option">
+            <input type="checkbox" id="check-desktop-subtitle-font-italic" />
+            <span class="checkbox-label">斜体</span>
+          </label>
+          <label class="checkbox-option">
+            <input type="checkbox" id="check-desktop-subtitle-locked" />
+            <span class="checkbox-label">锁定桌面字幕（鼠标穿透）</span>
+          </label>
+          <p class="hint">锁定后，点击、滚动和拖动会直接作用于下方应用。字幕不能拖动或缩放，也不显示悬停按钮。请从此处或实时页「更多 → 解锁桌面字幕」解锁。外观和锁定状态自动保存；字号较大时可放大字幕窗口。</p>
           <p class="hint">以上设置即时生效并自动保存。Qwen 双向通话按双方音频分别筛选；其他引擎中，麦克风视为自己，系统声音视为对方。同时采集两者时请选择「双方的话」。Qwen 关闭双向通话时只采集对方声音；显示自己的话需开启双向通话。</p>
         </div>
       </div>
