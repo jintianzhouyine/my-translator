@@ -166,6 +166,7 @@
             <div class="more-menu-sep"></div>
             <div class="more-menu-label">显示设置</div>
             <button id="btn-bilingual-subtitles" class="more-menu-item" type="button" aria-pressed="true">✓ 双语字幕（原文＋译文）</button>
+            <button id="btn-desktop-subtitle" class="more-menu-item" type="button" aria-pressed="false">桌面字幕</button>
             <div class="floating-controls">
               <div class="font-controls">
                 <button id="btn-font-down" class="float-btn" title="缩小字号">A−</button>
@@ -871,6 +872,30 @@
             <span class="checkbox-label">双语字幕（原文＋译文）</span>
           </label>
           <p class="hint">即时生效并保存；关闭后仅显示译文。也可在实时字幕的「更多」菜单中切换，使用双栏对照按钮可并排阅读。原文和译文可能先后到达，会自动补齐。</p>
+        </div>
+        <div class="settings-section" id="section-desktop-subtitle">
+          <label class="checkbox-option">
+            <input type="checkbox" id="check-desktop-subtitle" />
+            <span class="checkbox-label">桌面字幕</span>
+          </label>
+          <p class="hint">像桌面歌词一样，在其他窗口上方显示当前说话内容。拖动字幕可调整位置，悬停后可关闭；也可从实时页的「更多」菜单开关。</p>
+          <div class="field">
+            <label class="field-label" for="select-desktop-subtitle-content">显示内容</label>
+            <select id="select-desktop-subtitle-content">
+              <option value="both">原文＋译文</option>
+              <option value="original">仅原文</option>
+              <option value="translation">仅译文</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="select-desktop-subtitle-speaker">显示谁的话</label>
+            <select id="select-desktop-subtitle-speaker">
+              <option value="self">自己的话</option>
+              <option value="peer">对方的话</option>
+              <option value="both">双方的话</option>
+            </select>
+          </div>
+          <p class="hint">以上设置即时生效并自动保存。Qwen 双向通话按双方音频分别筛选；其他引擎中，麦克风视为自己，系统声音视为对方。同时采集两者时请选择「双方的话」。Qwen 关闭双向通话时只采集对方声音；显示自己的话需开启双向通话。</p>
         </div>
       </div>
 

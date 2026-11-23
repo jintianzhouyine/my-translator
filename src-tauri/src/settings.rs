@@ -73,6 +73,12 @@ pub struct Settings {
     pub max_lines: u32,
     /// Whether to show original text alongside translation
     pub show_original: bool,
+    /// Independent lyrics-style desktop subtitle preferences.
+    pub desktop_subtitle_enabled: bool,
+    /// "both" | "original" | "translation"
+    pub desktop_subtitle_content: String,
+    /// "self" | "peer" | "both"
+    pub desktop_subtitle_speaker: String,
     /// Translation mode: "soniox" | "local" | "openai" | "qwen"
     pub translation_mode: String,
     pub engine_selection_completed: bool,
@@ -168,6 +174,9 @@ impl Default for Settings {
             font_size: 16,
             max_lines: 5,
             show_original: true,
+            desktop_subtitle_enabled: false,
+            desktop_subtitle_content: "both".to_string(),
+            desktop_subtitle_speaker: "self".to_string(),
             translation_mode: "soniox".to_string(),
             engine_selection_completed: false,
             custom_context: None,
@@ -271,6 +280,9 @@ mod tests {
         assert_eq!(settings.qwen_original_volume, 1.0);
         assert_eq!(settings.qwen_translated_volume, 1.0);
         assert!(!settings.engine_selection_completed);
+        assert!(!settings.desktop_subtitle_enabled);
+        assert_eq!(settings.desktop_subtitle_content, "both");
+        assert_eq!(settings.desktop_subtitle_speaker, "self");
     }
 
     #[test]
@@ -290,6 +302,9 @@ mod tests {
             "qwen_translated_enabled": false,
             "qwen_translated_volume": 0.75,
             "engine_selection_completed": true,
+            "desktop_subtitle_enabled": true,
+            "desktop_subtitle_content": "original",
+            "desktop_subtitle_speaker": "peer",
             "qwen_glossary_outbound": {"产品名": "ProductName"},
             "qwen_glossary_inbound": {"ProductName": "产品名"},
             "translation_type": "two_way",

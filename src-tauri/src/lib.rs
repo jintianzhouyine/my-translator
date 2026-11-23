@@ -127,9 +127,13 @@ pub fn run() {
         .manage(QwenState::default())
         .manage(audio::routed::RoutedAudioState::default())
         .manage(commands::audio_file_source::AudioFileSourceState::default())
+        .manage(commands::desktop_subtitle::DesktopSubtitleState::default())
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_settings,
             commands::settings::save_settings,
+            commands::desktop_subtitle::set_desktop_subtitle,
+            commands::desktop_subtitle::get_desktop_subtitle,
+            commands::desktop_subtitle::close_desktop_subtitle,
             commands::audio::start_capture,
             commands::audio::stop_capture,
             commands::audio::check_permissions,

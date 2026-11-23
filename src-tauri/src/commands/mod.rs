@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod audio_file_export;
 pub mod audio_file_source;
+pub mod desktop_subtitle;
 pub mod edge_tts;
 pub mod google_free_tts;
 pub mod http_client;

@@ -35,7 +35,20 @@ if (!window.__TAURI__ && location.port === '3111') {
         local_tts_speed: 1.0,
         local_tts_models_dir: '',
         font_size: 16,
+        desktop_subtitle_enabled: false,
+        desktop_subtitle_content: 'both',
+        desktop_subtitle_speaker: 'self',
     };
+
+    const subtitleKey = 'translator-desktop-subtitle-preview';
+    const subtitleChannel = new BroadcastChannel(subtitleKey);
+    const mockListeners = new Map();
+    let subtitlePreview = null;
+    let subtitleSnapshot = { enabled: false, original: '', translation: '', speaker: '' };
+    const emitMock = (event, payload) => {
+        for (const callback of mockListeners.get(event) || []) callback({ payload });
+    };
+    subtitleChannel.onmessage = ({ data }) => emitMock(data.event, data.payload);
 
     // Sample local (Piper) voice catalog so the download/delete UI can be exercised.
     const mockLocalVoices = [
@@ -68,6 +81,28 @@ if (!window.__TAURI__ && location.port === '3111') {
             invoke: async (cmd, args) => {
                 console.log('[tauri-mock] invoke:', cmd);
                 switch (cmd) {
+                    case 'set_desktop_subtitle': {
+                        const wasEnabled = subtitleSnapshot.enabled;
+                        subtitleSnapshot = { ...args.payload };
+                        localStorage.setItem(subtitleKey, JSON.stringify(subtitleSnapshot));
+                        subtitleChannel.postMessage({ event: 'desktop-subtitle-update', payload: subtitleSnapshot });
+                        if (subtitleSnapshot.enabled && !wasEnabled) {
+                            subtitlePreview = window.open('/desktop-subtitle.html', 'desktop-subtitle-preview', 'width=900,height=180');
+                        }
+                        if (!subtitleSnapshot.enabled) {
+                            subtitlePreview?.close();
+                            subtitlePreview = null;
+                        }
+                        return null;
+                    }
+                    case 'get_desktop_subtitle':
+                        return JSON.parse(localStorage.getItem(subtitleKey) || 'null') || subtitleSnapshot;
+                    case 'close_desktop_subtitle':
+                        subtitleSnapshot.enabled = false;
+                        localStorage.setItem(subtitleKey, JSON.stringify(subtitleSnapshot));
+                        subtitleChannel.postMessage({ event: 'desktop-subtitle-closed', payload: null });
+                        window.close();
+                        return null;
                     case 'get_diagnostic_log_info':
                         return { directory: '浏览器预览：日志仅在桌面安装版保存', retentionDays: 7 };
                     case 'write_diagnostic_event':
@@ -157,7 +192,12 @@ if (!window.__TAURI__ && location.port === '3111') {
                 setPosition: async () => {},
                 setSize: async () => {},
                 onCloseRequested: async () => () => {},
-                listen: async () => () => {},
+                listen: async (event, callback) => {
+                    if (!mockListeners.has(event)) mockListeners.set(event, new Set());
+                    mockListeners.get(event).add(callback);
+                    return () => mockListeners.get(event)?.delete(callback);
+                },
+                startDragging: async () => {},
                 close: async () => { window.close(); },
                 minimize: async () => {},
                 toggleMaximize: async () => {},

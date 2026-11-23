@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>桌面字幕</title>
+  <link rel="stylesheet" href="styles/desktop-subtitle.css" />
+  <script src="js/tauri-mock.js"></script>
+  <script type="module" src="js/desktop-subtitle-window.js"></script>
+</head>
+<body>
+  <main id="desktop-subtitle" aria-label="桌面字幕">
+    <div class="subtitle-controls">
+      <span id="subtitle-speaker"></span>
+      <span id="subtitle-hint">按住字幕拖动 · 拖动边缘调整大小</span>
+      <button id="subtitle-close" type="button" title="关闭桌面字幕" aria-label="关闭桌面字幕">×</button>
+    </div>
+    <div id="subtitle-lines" class="subtitle-lines" role="status" aria-live="polite" aria-atomic="true">
+      <p id="subtitle-original" class="subtitle-original" hidden></p>
+      <p id="subtitle-translation" class="subtitle-translation" hidden></p>
+      <p id="subtitle-empty" class="subtitle-empty">等待语音…</p>
+    </div>
+  </main>
+</body>
+</html>

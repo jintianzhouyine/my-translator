@@ -38,6 +38,8 @@ export class TranscriptUI {
         this.currentSpeaker = null; // Track current speaker to detect changes
         this.currentLanguage = null; // Track current language to detect changes
         this.lastConfidence = null; // Last confidence score from Soniox
+        this.onChange = null;
+        this.audioSource = 'system';
     }
 
     get provider() {
@@ -87,6 +89,7 @@ export class TranscriptUI {
             language: language || null,
             confidence: this.lastConfidence,
             createdAt: Date.now(),
+            audioSource: this.audioSource,
         };
         this.segments.push(seg);
         // Also push a separate copy to sessionLog (never trimmed)
@@ -98,6 +101,7 @@ export class TranscriptUI {
             language: language || null,
             confidence: this.lastConfidence,
             createdAt: seg.createdAt,
+            audioSource: seg.audioSource,
         });
         if (speaker) this.currentSpeaker = speaker;
         if (language) this.currentLanguage = language;
@@ -128,6 +132,7 @@ export class TranscriptUI {
                 status: 'translated',
                 speaker: null,
                 createdAt: Date.now(),
+                audioSource: this.audioSource,
             };
             this.segments.push(newSeg);
             this.sessionLog.push({ ...newSeg });
@@ -236,6 +241,7 @@ export class TranscriptUI {
         this.currentLanguage = null;
         this.lastConfidence = null;
         this.contentEl = null;
+        this._notifyChange();
     }
 
     /**
@@ -402,6 +408,7 @@ export class TranscriptUI {
         this.currentLanguage = null;
         this.lastConfidence = null;
         this.contentEl = null;
+        this._notifyChange();
     }
 
     /**
@@ -436,6 +443,17 @@ export class TranscriptUI {
         } else {
             this._renderSingle();
         }
+        this._notifyChange();
+    }
+
+    _notifyChange() {
+        this.onChange?.({
+            segments: this.segments.map(segment => ({ ...segment })),
+            provisionalText: this.provisionalText,
+            sourceProvisionalText: this.sourceProvisionalText,
+            provider: this.provider,
+            audioSource: this.audioSource,
+        });
     }
 
     _renderSingle() {

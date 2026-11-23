@@ -110,3 +110,4 @@ ProductName = 产品名
 - [实时翻译客户端事件](https://help.aliyun.com/zh/model-studio/live-translator-client-events)
 
 实时字幕可以在「设置 → 显示设置」或「更多」中切换原文＋译文/仅译文，具体见[实时双语字幕](live-subtitles.md)。
+同一页面可开启独立「桌面字幕」，选择显示自己、对方或双方的原文／译文。显示自己的话需要开启双向通话；字幕开关不会改变译音输出。

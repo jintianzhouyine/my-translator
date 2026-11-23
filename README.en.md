@@ -42,6 +42,7 @@ macOS installers are ad-hoc signed and not notarized; Windows installers do not 
 
 - Capture system audio, the microphone, or both.
 - Show translations only or enable bilingual captions with source and translated text, stacked or in two columns.
+- Enable transparent desktop captions and choose source, translation, or both for your speech, the other person's speech, or both speakers.
 - Use an always-on-top window, compact mode, font size and color controls, and auto-scroll that lets you read earlier text without jumping back down.
 - Save and browse local session history; hiding source text does not delete received transcripts.
 

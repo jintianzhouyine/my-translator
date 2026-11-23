@@ -7,6 +7,7 @@ import { settingsManager } from './settings.js';
 import { hasRememberedEngine } from './engine-startup.js';
 import { DiagnosticLogger } from './diagnostics.js';
 import { TranscriptUI } from './ui.js';
+import { DesktopSubtitles } from './desktop-subtitles.js';
 import { sonioxClient } from './soniox.js';
 import { elevenLabsTTS } from './elevenlabs-tts.js';
 import { googleTTS } from './google-tts.js';
@@ -85,6 +86,7 @@ class App {
         // Init transcript UI
         const transcriptContainer = document.getElementById('transcript-content');
         this.transcriptUI = new TranscriptUI(transcriptContainer);
+        await this._initDesktopSubtitles();
 
         // Init session store — one session file lives across many Start/Pause
         // cycles; it autosaves while recording and finalizes on Stop or app close.
@@ -307,6 +309,21 @@ class App {
         document.getElementById('check-show-original')?.addEventListener('change', (event) => {
             void this._setShowOriginal(event.target.checked);
         });
+        document.getElementById('btn-desktop-subtitle')?.addEventListener('click', () => {
+            void this._setDesktopSubtitleSettings({
+                desktop_subtitle_enabled: settingsManager.get().desktop_subtitle_enabled !== true,
+            });
+        });
+        for (const [id, key] of [
+            ['check-desktop-subtitle', 'desktop_subtitle_enabled'],
+            ['select-desktop-subtitle-content', 'desktop_subtitle_content'],
+            ['select-desktop-subtitle-speaker', 'desktop_subtitle_speaker'],
+        ]) {
+            document.getElementById(id)?.addEventListener('change', event => {
+                void this._setDesktopSubtitleSettings({ [key]: event.target.type === 'checkbox'
+                    ? event.target.checked : event.target.value });
+            });
+        }
 
         // Font size quick controls
         document.getElementById('btn-font-up').addEventListener('click', () => this._adjustFontSize(4));
@@ -1100,11 +1117,13 @@ class App {
         const subtitleOnly = previous && previous.show_original !== settings.show_original
             && Object.keys(settings).every(key => key === 'show_original' || settings[key] === previous[key]);
         const mixOnly = previous && Object.keys(settings).every(key => isQwenMixSetting(key) || settings[key] === previous[key]);
+        const desktopOnly = previous && Object.keys(settings).every(key => key.startsWith('desktop_subtitle_') || settings[key] === previous[key]);
         this._appliedSettings = { ...settings };
         this._applySubtitleDisplay(settings);
+        this._applyDesktopSubtitleDisplay(settings);
         this.qwenAudioControls?.apply(settings);
         // A live subtitle toggle must not change capture, routing, or narration.
-        if (subtitleOnly || mixOnly) return;
+        if (subtitleOnly || mixOnly || desktopOnly) return;
 
         // Update overlay opacity
         const overlayView = document.getElementById('overlay-view');
@@ -2455,6 +2474,7 @@ class App {
         }
 
         this.isRunning = true;
+        this.transcriptUI.audioSource = this.currentSource;
         void this.diagnostics?.record('live_started', {
             mode: this.translationMode === 'qwen' && settings.qwen_duplex_enabled !== false ? 'duplex' : 'caption',
         });
@@ -3312,6 +3332,64 @@ class App {
     }
 
     // ─── Compact Mode ───────────────────────────────
+
+    async _initDesktopSubtitles() {
+        this.desktopSubtitles = new DesktopSubtitles({
+            invoke,
+            onError: message => this._showToast(message, 'error'),
+        });
+        this.transcriptUI.onChange = snapshot => {
+            this.desktopSubtitles.update({ ...snapshot, audioSource: snapshot.audioSource || this.currentSource });
+        };
+        await this.appWindow.listen?.('desktop-subtitle-closed', () => {
+            // Drop queued streaming writes before waiting for an in-progress settings save.
+            this.desktopSubtitles.configure({ ...settingsManager.get(), desktop_subtitle_enabled: false });
+            void this._setDesktopSubtitleSettings({ desktop_subtitle_enabled: false });
+        });
+    }
+
+    _applyDesktopSubtitleDisplay(settings) {
+        settings = { ...settings, ...this._pendingDesktopSubtitlePatch };
+        this.desktopSubtitles?.configure(settings);
+        const checkbox = document.getElementById('check-desktop-subtitle');
+        if (checkbox) checkbox.checked = settings.desktop_subtitle_enabled === true;
+        const content = document.getElementById('select-desktop-subtitle-content');
+        if (content) content.value = settings.desktop_subtitle_content || 'both';
+        const speaker = document.getElementById('select-desktop-subtitle-speaker');
+        if (speaker) speaker.value = settings.desktop_subtitle_speaker || 'self';
+        const button = document.getElementById('btn-desktop-subtitle');
+        if (button) {
+            button.textContent = settings.desktop_subtitle_enabled === true ? '✓ 桌面字幕' : '桌面字幕';
+            button.setAttribute('aria-pressed', String(settings.desktop_subtitle_enabled === true));
+        }
+    }
+
+    async _setDesktopSubtitleSettings(patch) {
+        if (this._savingDesktopSubtitle) {
+            this._pendingDesktopSubtitlePatch = { ...this._pendingDesktopSubtitlePatch, ...patch };
+            return;
+        }
+        this._savingDesktopSubtitle = true;
+        const controls = ['check-desktop-subtitle', 'select-desktop-subtitle-content',
+            'select-desktop-subtitle-speaker', 'btn-desktop-subtitle']
+            .map(id => document.getElementById(id)).filter(Boolean);
+        controls.forEach(control => { control.disabled = true; });
+        try {
+            await settingsManager.save(patch);
+            this._applyDesktopSubtitleDisplay(settingsManager.get());
+        } catch (error) {
+            this._applyDesktopSubtitleDisplay(settingsManager.get());
+            this._showToast(`桌面字幕设置保存失败：${error.message || error}`, 'error');
+        } finally {
+            controls.forEach(control => { control.disabled = false; });
+            this._savingDesktopSubtitle = false;
+            if (this._pendingDesktopSubtitlePatch) {
+                const pending = this._pendingDesktopSubtitlePatch;
+                this._pendingDesktopSubtitlePatch = null;
+                await this._setDesktopSubtitleSettings(pending);
+            }
+        }
+    }
 
     _toggleCompact() {
         // Unified with auto-hide in ui-shell — one chrome hide/show mechanism.

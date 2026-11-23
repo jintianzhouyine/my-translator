@@ -70,6 +70,9 @@ function fixture(initialSettings = {}) {
     const started = [];
     const toasts = [];
     const chunks = [];
+    const windowListeners = new Map();
+    const desktopConfigurations = [];
+    const desktopSnapshots = [];
     const elements = new Map();
     const element = id => {
         if (!elements.has(id)) elements.set(id, new Element());
@@ -121,6 +124,11 @@ function fixture(initialSettings = {}) {
         QwenAudioControls: class extends RealQwenAudioControls {
             constructor(options) { super({ ...options, document }); }
         },
+        DesktopSubtitles: class {
+            configure(settings) { desktopConfigurations.push(structuredClone(settings)); }
+            update(snapshot) { desktopSnapshots.push(structuredClone(snapshot)); }
+            clear() { events.push('desktop:clear'); }
+        },
         AudioFileTranslation: class {
             constructor() { this.busy = false; this.snapshot = { state: 'ready' }; }
             async start() { events.push('file:start'); }
@@ -132,7 +140,9 @@ function fixture(initialSettings = {}) {
             onLeave() { events.push('file:pause-player'); }
             setSnapshot(snapshot) { this.snapshot = snapshot; }
         },
-        getCurrentWindow: () => ({}),
+        getCurrentWindow: () => ({
+            async listen(event, callback) { windowListeners.set(event, callback); return () => windowListeners.delete(event); },
+        }),
         getActivity: () => 'live',
         console: { log() {}, error() {} },
         invoke: async command => { events.push(`invoke:${command}`); },
@@ -169,6 +179,7 @@ function fixture(initialSettings = {}) {
         app[method] = async settings => started.push({ mode, settings: structuredClone(settings) });
     }
     return { app, element, document, pills, pendingSaves, started, toasts, chunks, events,
+        windowListeners, desktopConfigurations, desktopSnapshots,
         saved: () => ({ ...saved }) };
 }
 
@@ -551,4 +562,91 @@ test('display-only notification preserves narration and does not reconfigure aud
     f.app._applySettings({ ...f.saved(), show_original: false });
     assert.equal(f.app.ttsEnabled, true);
     assert.equal(f.element('check-show-original').checked, false);
+});
+
+test('desktop subtitle preferences preserve a running call, narration, and capture routing', async () => {
+    const f = fixture({ desktop_subtitle_enabled: false, desktop_subtitle_content: 'both', desktop_subtitle_speaker: 'self' });
+    await f.app._initDesktopSubtitles();
+    f.app._appliedSettings = f.saved();
+    f.app.isRunning = true;
+    f.app.ttsEnabled = true;
+    f.app.transcriptUI.configure = () => {};
+    f.app.pause = () => { throw new Error('display preferences must not pause the call'); };
+    f.app._updateSourceButtons = () => { throw new Error('display preferences must not reset capture'); };
+    f.app._updateTTSButton = () => { throw new Error('display preferences must not reset narration'); };
+    const settings = { ...f.saved(), desktop_subtitle_enabled: true,
+        desktop_subtitle_content: 'translation', desktop_subtitle_speaker: 'peer' };
+    f.app._applySettings(settings);
+    assert.equal(f.app.isRunning, true);
+    assert.equal(f.app.ttsEnabled, true);
+    assert.equal(f.element('check-desktop-subtitle').checked, true);
+    assert.equal(f.element('select-desktop-subtitle-content').value, 'translation');
+    assert.equal(f.element('select-desktop-subtitle-speaker').value, 'peer');
+    assert.equal(f.desktopConfigurations.at(-1).desktop_subtitle_enabled, true);
+});
+
+test('desktop subtitle preference save failure restores all controls and reports the failure', async () => {
+    const f = fixture({ desktop_subtitle_enabled: false, desktop_subtitle_content: 'both', desktop_subtitle_speaker: 'self' });
+    await f.app._initDesktopSubtitles();
+    f.element('check-desktop-subtitle').checked = true;
+    f.element('select-desktop-subtitle-content').value = 'translation';
+    f.element('select-desktop-subtitle-speaker').value = 'peer';
+    const saving = f.app._setDesktopSubtitleSettings({ desktop_subtitle_enabled: true,
+        desktop_subtitle_content: 'translation', desktop_subtitle_speaker: 'peer' });
+    assert.equal(f.pendingSaves.length, 1);
+    f.pendingSaves[0].reject(new Error('disk full'));
+    await saving;
+    assert.equal(f.saved().desktop_subtitle_enabled, false);
+    assert.equal(f.element('check-desktop-subtitle').checked, false);
+    assert.equal(f.element('select-desktop-subtitle-content').value, 'both');
+    assert.equal(f.element('select-desktop-subtitle-speaker').value, 'self');
+    assert.equal(f.element('btn-desktop-subtitle').disabled, false);
+    assert.match(f.toasts.at(-1).message, /字幕.*保存失败.*disk full/);
+});
+
+test('closing the native desktop subtitle window persists its disabled state', async () => {
+    const f = fixture({ desktop_subtitle_enabled: true, desktop_subtitle_content: 'both', desktop_subtitle_speaker: 'self' });
+    await f.app._initDesktopSubtitles();
+    const close = f.windowListeners.get('desktop-subtitle-closed');
+    assert.equal(typeof close, 'function');
+    close({ payload: null });
+    await nextTurn();
+    assert.deepEqual(f.pendingSaves[0].patch, { desktop_subtitle_enabled: false });
+    f.pendingSaves[0].resolve();
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_enabled, false);
+    assert.equal(f.element('check-desktop-subtitle').checked, false);
+});
+
+test('closing desktop subtitles during another preference save queues the disabled state', async () => {
+    const f = fixture({ desktop_subtitle_enabled: true, desktop_subtitle_content: 'both', desktop_subtitle_speaker: 'self' });
+    await f.app._initDesktopSubtitles();
+    const saving = f.app._setDesktopSubtitleSettings({ desktop_subtitle_content: 'original' });
+    f.windowListeners.get('desktop-subtitle-closed')({ payload: null });
+    f.pendingSaves[0].resolve();
+    await nextTurn();
+    assert.equal(f.pendingSaves.length, 2, 'the close must survive a pending display preference write');
+    assert.deepEqual(f.pendingSaves[1].patch, { desktop_subtitle_enabled: false });
+    f.pendingSaves[1].resolve();
+    await saving;
+    await nextTurn();
+    assert.equal(f.saved().desktop_subtitle_enabled, false);
+    assert.equal(f.saved().desktop_subtitle_content, 'original');
+    assert.equal(f.element('btn-desktop-subtitle').disabled, false);
+});
+
+test('desktop subtitles receive independent transcript snapshots with the active capture source', async () => {
+    const f = fixture();
+    await f.app._initDesktopSubtitles();
+    f.app.currentSource = 'microphone';
+    const snapshot = { segments: [{ id: 'out:1', direction: 'outbound', original: '你好', translation: 'Hello' }],
+        provisionalText: '', sourceProvisionalText: '', provider: 'qwen' };
+    assert.equal(typeof f.app.transcriptUI.onChange, 'function');
+    f.app.transcriptUI.onChange(snapshot);
+    const received = f.desktopSnapshots.at(-1);
+    assert.equal(received.audioSource, 'microphone');
+    assert.equal(received.provider, 'qwen');
+    assert.equal(received.segments[0].translation, 'Hello');
+    f.app.transcriptUI.onChange({ ...snapshot, audioSource: 'system' });
+    assert.equal(f.desktopSnapshots.at(-1).audioSource, 'system', 'recognition source metadata takes precedence over mutable controls');
 });
